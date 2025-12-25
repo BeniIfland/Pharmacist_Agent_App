@@ -5,26 +5,52 @@ from app.orchestrator import handle_turn
 import time
 
 
-def respond(message, history, flows_tate):
-    # t0 = time.perf_counter() #!
+def normalize_content(content) -> str:
+    """
+    This function is used to normalize the UIs messages into pure strings
+    
+    :param content: UIs message
+    :return: normalized string
+    :rtype: str
+    """
+    # If already a string, return it
+    if isinstance(content, str):
+        return content
+    # If Gradio gives list of blocks like [{"type":"text","text":"..."}]
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(item["text"])
+            elif isinstance(item, str):
+                parts.append(item)
+        return "".join(parts)
+    # Fallback
+    return str(content)
 
-    history = history or []
-    # adding the user's message in the correct dict format
-    history.append({"role": "user", "content": message})
-    # Add an empty assistant message which will be filled while streaming
-    history.append({"role": "assistant", "content": ""})
+def respond(message, history, flow_state):
+    # Convert Gradio history list of dicts to ChatMessage list
+    msg_history = []
+    for m in history or []:
+        msg_history.append(ChatMessage(role=m["role"], content=normalize_content(m["content"])))
 
+    req = ChatRequest(
+        message=message,
+        history=msg_history,
+        flow=FlowState(**(flow_state or {})), #unpacking the dict
+        user_id=None,)
 
-    # print("UI yield 0 at", time.perf_counter() - t0)#!
-    yield history, "" # yield nothing imeddietly to overcome gradio's 'processing' delay
+    # Start by echoing the user message in the UI immediately good for UX
+    ui_history = (history or []) + [{"role": "user", "content": message}, {"role": "assistant", "content": ""}]
+    yield ui_history, "", flow_state
 
-    #sreaming
-    partial = ""
-    for token in stream_llm(message):
-        # print("UI yield token at", time.perf_counter() - t0)#!
-        partial += token
-        history[-1]["content"] = partial
-        yield history, ""  # stream updates to the UI
+    # Stream orchestrator updates
+    last_flow = flow_state or {"name": None, "step": None, "slots": {}, "done": False}
+    for _delta, partial in handle_turn(req):
+        ui_history = [{"role": m.role, "content": m.content} for m in partial.history] #back to UI history format
+        #update flow state
+        last_flow = partial.flow.model_dump() #dump to convert back to normal dict for the UI
+        yield ui_history, "", last_flow
         
 
 
@@ -38,8 +64,11 @@ def build_ui():
         msg = gr.Textbox(placeholder="Type a message...", label="Message")
         send = gr.Button("Send")
 
-        send.click(respond, inputs=[msg, chatbot], outputs=[chatbot, msg])
-        msg.submit(respond, inputs=[msg, chatbot], outputs=[chatbot, msg])
+        flow_state = gr.State({"name": None, "step": None, "slots": {}, "done": False})
+
+        send.click(respond, inputs=[msg, chatbot, flow_state], outputs=[chatbot, msg, flow_state])
+        msg.submit(respond, inputs=[msg, chatbot, flow_state], outputs=[chatbot, msg, flow_state])
+        
 
     return demo
 
