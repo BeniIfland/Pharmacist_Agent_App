@@ -2,8 +2,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-
-@dataclass(frozen=True)
+#python decorators for simple classes that automatically creates __init__, __eq__ etc.
+#good for readability, and for data rather than behavior
+@dataclass(frozen=True) #frozen i.e., instances are immutable to maintain stateless deterministic behavior with read only capabilities
 class Medication:
     med_id: str
     display_name: str     # name
