@@ -1,9 +1,10 @@
 from typing import Iterator, Tuple
 from app.schemas import ChatRequest, ChatResponse, ChatMessage, FlowState, ToolCallRecord
-from app.llm import stream_llm
+from app.llm import stream_llm, extract_med_name
 from app.intent import detect_intent
 from app.flows import start_med_info_flow, is_med_info_flow
 from app.tools import get_medication_by_name
+
 
 
 def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
@@ -19,7 +20,7 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
     # add user message to history
     history.append(ChatMessage(role="user", content=req.message))
 
-    # prepare assistant message (we'll fill it)
+    # prepare assistant message, will be filled with content with the flow progression
     assistant = ChatMessage(role="assistant", content="")
     history.append(assistant)
 
@@ -35,22 +36,44 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
     # --- 2) Run med_info flow if active ---
     if flow.name == "med_info" and not flow.done:
         if flow.step == "collect_med_name":
-            # very simple slot extraction: assume the user's message contains the med name
-            med_name = req.message.strip()
-            flow.slots["med_name"] = med_name
+            # if we are in the med_info flow we need to extract the name out of the message
+            user_text = req.message.strip()   
+            #if user message is very short it is probably already the name and we
+            #will proceed to lookup rather than wasting time on an LLM call
+            
+            if 1 <= len(user_text.split()) < 2: #one word only is accepted, to avoid the "What's Advil" problem
+                flow.slots["med_name"] = user_text
+                flow.step = "lookup"
+            else:
+                flow.step = "extract_med_name"
+
+
+        if flow.step == "extract_med_name":
+            user_text = req.message.strip()
+
+            extracted = extract_med_name(user_text)  # LLM-call extractor
+            tool_calls.append(
+                    ToolCallRecord(name="extract_med_name",args={"text": user_text},result={"extracted": extracted},))
+
+            if not extracted: #if no med in the message (but we are in the flow #TODO: think if we ended up in the flow mistakenly
+                assistant.content = "Which medication name should I look up? (Brand or generic name is fine.)" #a predefined clarification message is ok here - an llm call would be a waste of time
+                # remain in same step to collect a clean name next
+                flow.step = "collect_med_name"
+                partial = ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
+                yield assistant.content, partial
+                return
+            #sucess and continue
+            flow.slots["med_name"] = extracted.strip()
             flow.step = "lookup"
+
+
 
         if flow.step == "lookup":
             med_name = flow.slots.get("med_name", "").strip()
 
             tool_result = get_medication_by_name(med_name)
             tool_calls.append(
-                ToolCallRecord(
-                    name="get_medication_by_name",
-                    args={"name": med_name},
-                    result=tool_result,
-                )
-            )
+                ToolCallRecord(name="get_medication_by_name", args={"name": med_name}, result=tool_result,))
 
             if tool_result["status"] == "OK":
                 med = tool_result["medication"]
@@ -59,8 +82,7 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
                     f'Prescription required: {"Yes" if med["rx_required"] else "No"}.\n'
                     f'Info: {med["label_summary"]}\n\n'
                     "I can provide factual information, but I can’t give medical advice. "
-                    "For personal guidance, consult a pharmacist or doctor."
-                )
+                    "For personal guidance, consult a pharmacist or doctor.")
                 flow.done = True
                 flow.step = "done"
 

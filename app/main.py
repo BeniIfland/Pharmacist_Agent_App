@@ -5,7 +5,7 @@ from app.llm import stream_llm
 
 app = FastAPI() #creating the web-app instance (the object that uvicorn runs)
 
-# with streaming 
+# with streaming enabled
 @app.post("/chat/stream")
 def chat_stream(input: dict): #POTENTIALY: TODO: ater replace with pydantic model
     message = input.get("message", "")
