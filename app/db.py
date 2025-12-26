@@ -28,7 +28,7 @@ MEDICATIONS: List[Medication] = [
     Medication(
         med_id="med_001",
         display_name="Ibuprofen",
-        aliases=["Advil", "Nurofen", "Ibu", "Iboprofen"],  # include common typos
+        aliases=["Advil", "Nurofen", "Ibu", "Iboprofen","אדביל","נורופן","איבופרופן","איבו"],  # include common typos
         active_ingredient="Ibuprofen",
         rx_required=False,
         label_summary="Nonsteroidal anti-inflammatory drug (NSAID) used for pain and fever relief.",
@@ -36,7 +36,7 @@ MEDICATIONS: List[Medication] = [
     Medication(
         med_id="med_002",
         display_name="Paracetamol",
-        aliases=["Acetaminophen", "Tylenol", "Panadol", "Para"],
+        aliases=["Acetaminophen", "Tylenol", "Panadol", "Para","אצטמינופן","טילנול","פנדול","פרצטמול"],
         active_ingredient="Paracetamol (Acetaminophen)",
         rx_required=False,
         label_summary="Analgesic/antipyretic used for pain and fever relief.",
@@ -44,7 +44,7 @@ MEDICATIONS: List[Medication] = [
     Medication(
         med_id="med_003",
         display_name="Amoxicillin",
-        aliases=["Amox", "Amoxil"],
+        aliases=["Amox", "Amoxil","אמוקסילין","אמוקסי","אמוקס"],
         active_ingredient="Amoxicillin",
         rx_required=True,
         label_summary="Penicillin-class antibiotic for bacterial infections.",
@@ -52,7 +52,7 @@ MEDICATIONS: List[Medication] = [
     Medication(
         med_id="med_004",
         display_name="Omeprazole",
-        aliases=["Prilosec", "Losec"],
+        aliases=["Prilosec", "Losec","פרילוסק","לוסק","אומפרזול"],
         active_ingredient="Omeprazole",
         rx_required=False,
         label_summary="Proton pump inhibitor (PPI) that reduces stomach acid.",
@@ -60,7 +60,7 @@ MEDICATIONS: List[Medication] = [
     Medication(
         med_id="med_005",
         display_name="Atorvastatin",
-        aliases=["Lipitor", "Atorva"],
+        aliases=["Lipitor", "Atorva","אטורבסטטין","אטורבה","ליפיתור"],
         active_ingredient="Atorvastatin",
         rx_required=True,
         label_summary="Statin medication used to lower LDL cholesterol.",
