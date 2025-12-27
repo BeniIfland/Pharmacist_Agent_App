@@ -5,3 +5,6 @@ def start_med_info_flow() -> FlowState:
 
 def is_med_info_flow(flow: FlowState) -> bool:
     return flow is not None and flow.name == "med_info" and not flow.done
+
+def start_stock_check_flow() -> FlowState:
+    return  FlowState(name="stock_check", step="collect", slots={},done=False)

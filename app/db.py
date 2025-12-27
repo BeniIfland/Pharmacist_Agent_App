@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Literal, Tuple
 from datetime import date
+from tools import _norm
 
 #python decorators for simple classes that automatically creates __init__, __eq__ etc.
 #good for readability, and for data rather than behavior
@@ -109,12 +110,12 @@ BRANCHES: List[Branch] = [
     Branch(
         branch_id="br_001",
         display_name="Tel Aviv",
-        aliases=["tel aviv", "tlv", "תל אביב", "תא", "ת\"א"],
+        aliases=["tel aviv", "tlv", "תל אביב", "תא", "א\"ת"],
     ),
     Branch(
         branch_id="br_002",
         display_name="Jerusalem",
-        aliases=["jerusalem", "jlm", "ירושלים", "י-ם", "י\"ם"],
+        aliases=["jerusalem", "jlm", "ירושלים", "י-ם", "ם\"י"],
     ),
     Branch(
         branch_id="br_003",
@@ -152,7 +153,7 @@ RX_BY_ID: Dict[str, Prescription] = {p.rx_id.upper(): p for p in PRESCRIPTIONS}
 
 # lookup maps
 BRANCH_ALIAS_MAP: Dict[str, str] = {
-    alias.strip().lower(): b.branch_id
+    _norm(alias): b.branch_id
     for b in BRANCHES
     for alias in ([b.display_name] + b.aliases)
 }
