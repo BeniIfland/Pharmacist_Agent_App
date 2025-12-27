@@ -1,3 +1,4 @@
+from typing import Iterator, Tuple, Optional
 from typing import Iterator, Tuple
 from app.schemas import ChatRequest, ChatResponse, ChatMessage, FlowState, ToolCallRecord
 from app.llm import stream_llm, extract_med_name
@@ -8,169 +9,273 @@ from app.llm import extract_med_name, render_med_info_stream, render_ambiguous_s
 from app.llm import detect_intent_llm, render_small_talk_stream
 from app.safety import is_medical_advice_request
 from app.llm import render_refusal_stream
+from app.intent import IntentResult
 
 
 
-#TODO: make the LLM use the info looked up on the medicine and generate a concrete response based on that
+def _yield_stream(*,stream: Iterator[str],assistant: ChatMessage,history: list[ChatMessage],flow: FlowState,tool_calls: list[ToolCallRecord],) -> Iterator[Tuple[str, ChatResponse]]:
+    """
+    Helper: consumes a delta stream, appends to assistant.content,
+    yields (delta, partial_response) each time.
+    """
+    for delta in stream:
+        assistant.content += delta
+        partial = ChatResponse(
+            answer=assistant.content,
+            history=history,
+            flow=flow,
+            tool_calls=tool_calls,
+        )
+        yield delta, partial
+
+
+def _finalize_flow(flow: FlowState) -> None:
+    flow.done = True
+    flow.step = "done"
+
+
+def _route_or_continue_flow(
+    req: ChatRequest,
+    flow: FlowState,
+    lang_heuristic: str,
+    tool_calls: list[ToolCallRecord],
+) -> tuple[FlowState, Optional[IntentResult], str]:
+    """
+    Preserves your current behavior:
+    - If already in med_info, do NOT reroute mid-flow.
+    - Else route with LLM; if not med_info => small_talk.
+    - Returns: (flow, intent_result, selected_lang_for_smalltalk)
+    """
+    intent_result: Optional[IntentResult] = None
+
+    if is_med_info_flow(flow):
+        # continue existing med_info flow (do NOT re-route mid-flow)
+        return flow, None, lang_heuristic
+
+    intent_result = detect_intent_llm(req.message)
+    tool_calls.append(
+        ToolCallRecord(
+            name="detect_intent",
+            args={"text": req.message},
+            result=intent_result.model_dump(),
+        )
+    )
+
+    if intent_result.intent == "med_info":
+        flow = start_med_info_flow()
+        flow.step = "extract_med_name"
+    else:
+        flow = FlowState(name="small_talk", step="reply", slots={}, done=False)
+
+    st_lang = intent_result.lang if intent_result else lang_heuristic
+    return flow, intent_result, st_lang
+
+#TODO: add chat history for small talk
+def run_small_talk_flow(
+    *,
+    req: ChatRequest,
+    flow: FlowState,
+    lang: str,
+    assistant: ChatMessage,
+    history: list[ChatMessage],
+    tool_calls: list[ToolCallRecord],
+) -> Iterator[Tuple[str, ChatResponse]]:
+    """
+    Same behavior as your current small_talk branch:
+    - stream response
+    - mark flow done
+    - return
+    """
+    tool_calls.append(
+        ToolCallRecord(
+            name="render_small_talk",
+            args={"lang": lang},
+            result={"note": "streamed"},
+        )
+    )
+
+    assistant.content = ""
+    yield from _yield_stream(
+        stream=render_small_talk_stream(lang, req.message),
+        assistant=assistant,
+        history=history,
+        flow=flow,
+        tool_calls=tool_calls,
+    )
+
+    _finalize_flow(flow)
+    return
+
+
+def run_med_info_flow(
+    *,
+    req: ChatRequest,
+    flow: FlowState,
+    lang: str,
+    assistant: ChatMessage,
+    history: list[ChatMessage],
+    tool_calls: list[ToolCallRecord],
+) -> Iterator[Tuple[str, ChatResponse]]:
+    """
+    Same functionality as your current med_info section, just structured.
+    """
+    if flow.step == "extract_med_name":
+        user_text = req.message.strip()
+        extracted = extract_med_name(user_text)
+        tool_calls.append(
+            ToolCallRecord(
+                name="extract_med_name",
+                args={"text": user_text},
+                result={"extracted": extracted},
+            )
+        )
+
+        if not extracted: #if no med in the message (but we are in the flow #TODO: think if we ended up in the flow mistakenly
+            assistant.content = ""
+            flow.step = "extract_med_name"  # stay here
+            yield from _yield_stream(
+                stream=render_ask_med_name_stream(lang),
+                assistant=assistant,
+                history=history,
+                flow=flow,
+                tool_calls=tool_calls,
+            )
+            return
+
+        flow.slots["med_name"] = extracted.strip()
+        flow.step = "lookup"
+
+    if flow.step == "lookup":
+        med_name = (flow.slots.get("med_name") or "").strip()
+        tool_result = get_medication_by_name(med_name)
+        tool_calls.append(
+            ToolCallRecord(
+                name="get_medication_by_name",
+                args={"name": med_name},
+                result=tool_result,
+            )
+        )
+
+        if tool_result["status"] == "OK":
+            med = tool_result["medication"]
+            _finalize_flow(flow)
+
+            assistant.content = ""
+            yield from _yield_stream(
+                stream=render_med_info_stream(lang, med),
+                assistant=assistant,
+                history=history,
+                flow=flow,
+                tool_calls=tool_calls,
+            )
+            return
+
+        if tool_result["status"] == "AMBIGUOUS":
+            options = [m["display_name"] for m in tool_result["matches"]]
+            flow.step = "extract_med_name"
+
+            assistant.content = ""
+            yield from _yield_stream(
+                stream=render_ambiguous_stream(lang, options),
+                assistant=assistant,
+                history=history,
+                flow=flow,
+                tool_calls=tool_calls,
+            )
+            return
+
+        # NOT_FOUND
+        flow.step = "extract_med_name"
+        assistant.content = ""
+        yield from _yield_stream(
+            stream=render_not_found_stream(lang),
+            assistant=assistant,
+            history=history,
+            flow=flow,
+            tool_calls=tool_calls,
+        )
+        return
+
+    # Last-resort fallback (unchanged behavior)
+    assistant.content = ""
+    yield from _yield_stream(
+        stream=render_small_talk_stream(lang, req.message),
+        assistant=assistant,
+        history=history,
+        flow=flow,
+        tool_calls=tool_calls,
+    )
+    return
+
+
 def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
-    """
-    Stateless orchestrator.
-    Yields (delta_text, partial_response) based on app logic so the UI can stream.
-    """
-    lang = detect_lang(req.message)  # per-turn language detection
-    
-    # Copy flow-state from request (client-owned)
+    """ Stateless orchestrator. Yields (delta_text, partial_response) for streaming UI. """
+
+    lang = detect_lang(req.message)
+
     history = list(req.history)
     flow = req.flow or FlowState()
     tool_calls: list[ToolCallRecord] = []
 
-    # add user message to history
+    # add user message
     history.append(ChatMessage(role="user", content=req.message))
 
-    # Hard safety override: if user asks for advice/diagnosis, do NOT enter med_info flow
-    # back up for when it is obvious that there's a medical advise reques -> we do not need the LLM
-    if is_medical_advice_request(req.message):
-        tool_calls.append(ToolCallRecord(
-            name="safety_gate",
-            args={"text": req.message},
-            result={"action": "refuse_advice"}
-        ))
-        print("Safety gate activated")#TODO: delete
-        assistant.content = ""
-        for delta in render_refusal_stream(lang, req.message):
-            assistant.content += delta
-            partial = ChatResponse(answer=assistant.content, history=history, flow=FlowState(), tool_calls=tool_calls)
-            yield delta, partial
-        return
-
-
-
-    # prepare assistant message, will be filled with content with the flow progression
+    # assistant message placeholder
     assistant = ChatMessage(role="assistant", content="")
     history.append(assistant)
 
-    # --- 1) Decide / continue flow 
-    intent_result = None
-
-    if is_med_info_flow(flow):
-        # continue existing med_info flow (do NOT re-route mid-flow)
-        pass
-    else:
-        # Route using LLM (stateless)
-        intent_result = detect_intent_llm(req.message)
-        tool_calls.append(
-            ToolCallRecord(
-                name="detect_intent",
-                args={"text": req.message},
-                result=intent_result.model_dump(),))
-
-        if intent_result.intent == "med_info":
-            flow = start_med_info_flow()
-            flow.step = "extract_med_name"   # flow starts with this step
-        else:
-            # everything else becomes small_talk fallback
-            flow = FlowState(name="small_talk", step="reply", slots={}, done=False)
-
-
-
-        # small_talk flow (fallback) 
-        #TODO: add chat history for small talk
-    if flow.name == "small_talk" and not flow.done:
-        # per-turn language: prefer router lang if available, else heuristic
-        st_lang = intent_result.lang if intent_result else lang #double check #TODO: think if I prefer to stay with the heuristic
-
-        tool_calls.append(
-            ToolCallRecord(name="render_small_talk",args={"lang": st_lang},result={"note": "streamed"},))
+    # --- Safety override (unchanged functionality) ---
+    if is_medical_advice_request(req.message):
+        tool_calls.append(ToolCallRecord(name="safety_gate", args={"text": req.message}, result={"action": "refuse_advice"},))
+        print("Safety gate activated") #TODO: delete
 
         assistant.content = ""
-        for delta in render_small_talk_stream(st_lang, req.message):
-            assistant.content += delta
-            partial = ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
-            yield delta, partial
-
-        flow.done = True
-        flow.step = "done"
+        yield from _yield_stream(
+            stream=render_refusal_stream(lang, req.message),
+            assistant=assistant,
+            history=history,
+            flow=FlowState(),   # reset flow (same as before)
+            tool_calls=tool_calls,)
         return
-    print(f"[DBG] flow={flow.name} step={flow.step} lang={lang} intent={getattr(intent_result,'intent',None)}") #TODO: temp for debugging
-    # --- 2) Run med_info flow if active ---
+
+    # --- Route / Continue flow (unchanged behavior) ---
+    flow, intent_result, st_lang = _route_or_continue_flow(
+        req=req,
+        flow=flow,
+        lang_heuristic=lang,
+        tool_calls=tool_calls,)
+
+    print(f"[DBG] flow={flow.name} step={flow.step} lang={lang} intent={getattr(intent_result,'intent',None)}") #TODO: delete
+
+    # --- Dispatch by flow name ---
+    if flow.name == "small_talk" and not flow.done:
+        yield from run_small_talk_flow(
+            req=req,
+            flow=flow,
+            lang=st_lang,
+            assistant=assistant,
+            history=history,
+            tool_calls=tool_calls,)
+        return
+
     if flow.name == "med_info" and not flow.done:
-    
-        if flow.step == "extract_med_name":
-            user_text = req.message.strip()
+        yield from run_med_info_flow( #yield everyting from this iterator function
+            req=req,
+            flow=flow,
+            lang=lang,
+            assistant=assistant,
+            history=history,
+            tool_calls=tool_calls,
+        )
+        return
 
-            extracted = extract_med_name(user_text)  # LLM-call extractor
-            tool_calls.append(
-                    ToolCallRecord(name="extract_med_name",args={"text": user_text},result={"extracted": extracted},))
-
-            if not extracted: #if no med in the message (but we are in the flow #TODO: think if we ended up in the flow mistakenly
-                # ask user for medication name in the same language
-
-                assistant.content = ""
-                # remain in same step to collect a clean name next
-                flow.step = "extract_med_name"
-
-                for delta in render_ask_med_name_stream(lang):  #TODO: this part is repetative mayabe change to a function
-                    assistant.content += delta
-                    partial = ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
-                    yield delta, partial
-                return
-            
-            #sucess and continue
-            flow.slots["med_name"] = extracted.strip()  
-            flow.step = "lookup"
-
-
-
-        if flow.step == "lookup":
-            med_name = flow.slots.get("med_name", "").strip()
-
-            tool_result = get_medication_by_name(med_name)
-            tool_calls.append(
-                ToolCallRecord(name="get_medication_by_name", args={"name": med_name}, result=tool_result,))
-
-            if tool_result["status"] == "OK":
-                med = tool_result["medication"]
-
-                flow.done = True
-                flow.step = "done"
-                
-                assistant.content = ""
-                for delta in render_med_info_stream(lang, med):
-                    assistant.content += delta
-                    partial = ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
-                    yield delta, partial
-                return
-
-            if tool_result["status"] == "AMBIGUOUS":
-                options = [m["display_name"] for m in tool_result["matches"]]
-
-                # stay in same flow; ask again
-                flow.step = "extract_med_name"
-
-                assistant.content = ""
-                for delta in render_ambiguous_stream(lang, options):
-                    assistant.content += delta
-                    partial = ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
-                    yield delta, partial
-
-                
-                return
-
-            # NOT_FOUND
-            assistant.content = ""
-            flow.step = "extract_med_name"
-
-            for delta in render_not_found_stream(lang):
-                assistant.content += delta
-                partial = ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
-                yield delta, partial
-            return
-        
-
-        # Last resort fallback: treat as small talk 
+    # Default fallback (kept identical to your last-resort behavior)
     assistant.content = ""
-    for delta in render_small_talk_stream(lang, req.message):
-        assistant.content += delta
-        partial = ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
-        yield delta, partial
+    yield from _yield_stream(
+        stream=render_small_talk_stream(lang, req.message),
+        assistant=assistant,
+        history=history,
+        flow=flow,
+        tool_calls=tool_calls,
+    )
     return

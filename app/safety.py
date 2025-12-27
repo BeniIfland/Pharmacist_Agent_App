@@ -9,7 +9,7 @@ _HE_PATTERNS = [
 ]
 _EN_PATTERNS = [
     r"\bshould i\b", r"\brecommend\b", r"\bwhat should i take\b", r"\bhurts\b",
-    r"\bdiagnos(e|is)\b", r"\btreat(ment)?\b", r"\bwhat do i do\b",
+    r"\bdiagnos(e|is)\b", r"\btreat(ment)?\b", r"\bwhat do i do\b", r"\boffer\b", r"\bencourage\b"
 ]
 
 def is_medical_advice_request(text: str) -> bool:

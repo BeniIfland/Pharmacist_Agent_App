@@ -34,8 +34,8 @@ def detect_intent_llm(text: str) -> IntentResult:
             "Your goal is to return a JSON which classifies user's intent."
             "Return ONLY a valid JSON and nothing else.\n\n"
             "Allowed intents:\n"
-            "- med_info: user asks about a medication name or information AVOID confusing when he asks for a medical advice or guidance unrelated to medicines.\n"
-            "- small_talk: greetings, thanks, 'what can you do', casual chit-chat, any message that is not related to medicines.\n"
+            "- med_info: user asks about a medication name or information AVOID confusing when he asks for a medical advice or guidance unrelated to specific medicines.\n"
+            "- small_talk: greetings, thanks, 'what can you do', casual chit-chat, any message that is not related to specific medicines, including sales, encouragments or a behavior that is unsafe for the customer or that out of the scope of a Pharmacist Assistant chatbot.\n"
             "Language:\n"
             "- lang must be 'he' if the user wrote in Hebrew letters, else 'en'.\n\n"
             "JSON schema:\n"
@@ -280,4 +280,13 @@ def render_small_talk_stream(lang: str, user_text: str):
         "Capabilities: factual medication info, availability, prescription requirement.\n"
         "If user asks for personal guidance: suggest consulting a pharmacist/doctor."
     )
+    return render_text_stream(lang, instruction, facts)
+
+def render_refusal_stream(lang: str, user_text: str):
+    instruction = (
+        "Refuse to provide medical advice/diagnosis/recommendations. "
+        "Explain you can provide factual medication info only. "
+        "Suggest consulting a pharmacist/doctor for personal guidance."
+    )
+    facts = f"User request: {user_text}"
     return render_text_stream(lang, instruction, facts)
