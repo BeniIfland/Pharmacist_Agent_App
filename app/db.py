@@ -110,12 +110,12 @@ BRANCHES: List[Branch] = [
     Branch(
         branch_id="br_001",
         display_name="Tel Aviv",
-        aliases=["tel aviv", "tlv", "תל אביב", "תא", "א\"ת"],
+        aliases=["tel aviv", "tlv", "תל אביב", "תא", "ת\"א"], #TODO: check if abbreviations work
     ),
     Branch(
         branch_id="br_002",
         display_name="Jerusalem",
-        aliases=["jerusalem", "jlm", "ירושלים", "י-ם", "ם\"י"],
+        aliases=["jerusalem", "jlm", "ירושלים", "ם-י", "י\"ם"],#TODO: check if abbreviations work
     ),
     Branch(
         branch_id="br_003",

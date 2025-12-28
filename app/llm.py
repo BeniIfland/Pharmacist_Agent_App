@@ -32,8 +32,9 @@ def detect_intent_llm(text: str) -> IntentResult:
             "Your goal is to return a JSON which classifies user's intent."
             "Return ONLY a valid JSON and nothing else.\n\n"
             "Allowed intents:\n"
-            "- med_info: user asks about a medication name or information AVOID confusing when he asks for a medical advice or guidance unrelated to specific medicines.\n"
-            "- stock_check: user asks if a medication is available or in stock in a branch/city/store.\n"
+            "- med_info: the user asks about a medication name or information AVOID confusing when he asks for a medical advice or guidance unrelated to specific medicines.\n"
+            "- stock_check: the user asks if a medication is available or in stock in a branch/city/store.\n"
+            "- rx_verify: the user asks to verify his prescription or get a list of his prescriptions\n"
             "- small_talk: greetings, thanks, 'what can you do', casual chit-chat, any message that is not related to specific medicines, including sales, encouragments or a behavior that is unsafe for the customer or that out of the scope of a Pharmacist Assistant chatbot or that is not covered by the aforementioned intents.\n"
             "Language:\n"
             "- lang must be 'he' if the user wrote in Hebrew letters, else 'en'.\n\n"
@@ -133,31 +134,8 @@ def extract_med_name(text: str) -> str | None:
         return None
     return out
 
-# def render_med_info(lang: str, med: dict) -> str: #for translation
-#     prompt = f"""
-# You are a pharmacist assistant UI text generator.
-# Rules:
-# - Reply in {'Hebrew' if lang=='he' else 'English'}.
-# - Use ONLY the facts provided. DO NOT add dosage, advice, diagnosis, or recommendations.
-# - DO NOT encourage purchasing.
-# - Keep your answers brief and concise.
 
-# Facts:
-# Name: {med['display_name']}
-# Active ingredient: {med['active_ingredient']}
-# Prescription required: {med['rx_required']}
-# Summary: {med['label_summary']}
-# """
-#     resp = client.responses.create(
-#         model="gpt-5-mini",
-#         input=prompt,
-#         reasoning={"effort": "minimal"},
-#         # max_output_tokens=120,
-#     )
-#     return resp.output_text.strip()
 
-from typing import Iterator
-from openai import OpenAI
 
 client = OpenAI()
 
@@ -180,7 +158,7 @@ You are a pharmacist assistant UI text generator.
 
 Rules:
 - You are allowed to respond ONLY in English or Hebrew, and you can say these are the only languages you speak if addressed in another.
-- This time reply in {language}.
+- This time reply in {language} and make sure to present the facts in this language.
 - Use ONLY the facts provided provided to generate your response. Do not add medical advice, diagnosis, dosage, recommendations, or purchase encouragement from your prior knowledge.
 - If the user asks for advice, refuse briefly and suggest consulting a pharmacist/doctor (in the same language).
 - Keep it concise (3-6 lines) but always include a relevant into to make your reply sound human for smooth user experience".
@@ -309,7 +287,7 @@ def render_stock_check_stream(lang: str, med: dict, branch: dict, stock_status: 
         f"Branch: {branch['display_name']}.\n"
         f"Stock status: {stock_status}.\n")
     
-    return render_text_stream(lang, instructions, facts)  # whatever you already use
+    return render_text_stream(lang, instructions, facts)  
 
 
 def render_ask_branch_stream(lang: str) -> Iterator[str]: #simple - can be replaced by the LLM - based render_text_stream
@@ -329,13 +307,6 @@ def render_ambiguous_branch_stream(lang: str, options: list[str]) -> Iterator[st
     else:
         yield "Which one did you mean? Pick one please:\n- " + "\n- ".join(options)
 
-
-#  #simple - can be replaced by the LLM - based render_text_stream
-# def render_branch_not_found_stream(lang: str) -> Iterator[str]:
-#     yield ("לא מצאתי את הסניף הזה. אנא נסה.י תל אביב / ירושלים / חיפה."
-#            if lang == "he" else
-#            "I couldn’t find that branch. Please try Tel Aviv / Jerusalem / Haifa.")
-
  #simple - can be replaced by the LLM - based render_text_stream
 def render_branch_not_found_stream(lang: str) -> Iterator[str]:
     print("render_branch_not_found_stream") #TODO: delete
@@ -343,3 +314,79 @@ def render_branch_not_found_stream(lang: str) -> Iterator[str]:
         yield "לצערי לא מצאתי את הסניף הזה אולי אין לנו סניף במקום המדובר או שישנה טעות באיות. אפשר לכתוב עיר/סניף כמו: תל אביב / ירושלים / חיפה."
     else:
         yield "Unfortunately I couldn’t find that branch, maybe we don't have a branch in this location or you had a spelling mistake. Try a city/branch like: Tel Aviv / Jerusalem / Haifa."
+
+
+# prescriptions flow renderers:
+
+ #simple - can be replaced by the LLM - based render_text_stream
+def render_ask_rx_or_user_stream(lang: str) -> Iterator[str]:
+    if lang == "he":
+        yield "כדי לבדוק מרשם, כתבי מזהה מרשם (למשל RX-10001) או מזהה משתמש (למשל user_009)." #TODO: CHECK
+    else:
+        yield "To check prescriptions, provide a prescription ID (e.g., RX-10001) or a user ID (e.g., user_009)."
+
+ #simple - can be replaced by the LLM - based render_text_stream
+def render_ask_rx_id_stream(lang: str) -> Iterator[str]:
+    if lang == "he":
+        yield "מה מספר המרשם? (למשל RX-10001)"
+    else:
+        yield "What is the prescription ID? (e.g., RX-10001)"
+
+ #simple - can be replaced by the LLM - based render_text_stream
+def render_ask_user_id_stream(lang: str) -> Iterator[str]:
+    if lang == "he":
+        yield "מה מזהה המשתמש שלך? (למשל user_009)"
+    else:
+        yield "What is your user ID? (e.g., user_009)"
+
+ #simple - can be replaced by the LLM - based render_text_stream
+def render_rx_not_found_stream(lang: str) -> Iterator[str]:
+    if lang == "he":
+        yield "לא מצאתי מרשם כזה במערכת. בדוק\י את תקינות המספר שהזנת (למשל RX-10001)."
+    else:
+        yield "I couldn’t find that prescription in the system. Please recheck the inserted ID (e.g., RX-10001)."
+
+def render_user_not_found_stream(lang: str) -> Iterator[str]:
+    if lang == "he":
+        yield "לא מצאתי משתמש כזה במערכת. נסה\י מזהה כמו user_009."
+    else:
+        yield "I couldn’t find that user in םour system. Try an ID like user_009."
+
+def render_user_rx_empty_stream(lang: str) -> Iterator[str]:
+    if lang == "he":
+        yield "לא נמצאו מרשמים למשתמש הזה במערכת."
+    else:
+        yield "No prescriptions were found for that user in the system."
+
+# LLM verbalizer for factual rendering (recommended for bilingual polish).
+def render_rx_verify_stream(lang: str, rx: dict) -> Iterator[str]:
+    # rx: {rx_id,user_id,user_name,med_name,rx_status,expires_on}    
+    instructions = (
+        "You are a pharmacist assistant. Provide factual prescription related info only.\n"
+        "No advice, no recommendations, no dosage, no diagnosis.\n"
+        "No additional offers besides the factual info you provide\n"
+        "Keep it short.\n")
+    facts = (
+        f"Prescription {rx.get('rx_id')} — Status: {rx.get('rx_status')}.\n"
+            f"Medication: {rx.get('med_name')}.\n"
+            f"Expires on: {rx.get('expires_on')}.\n")
+    return render_text_stream(lang, instructions, facts)  
+
+def render_user_rx_list_stream(lang: str, user: dict, items: list[dict]) -> Iterator[str]:
+    # user: {user_id,user_name} ; items: [{rx_id, med_name, rx_status, expires_on}]
+    if not items:
+        yield from render_user_rx_empty_stream(lang)
+        return
+
+    if lang == "he":
+        lines = [f"מרשמים עבור {user.get('user_name')} ({user.get('user_id')}):"]
+        for it in items:
+            lines.append(f"- {it.get('rx_id')}: {it.get('med_name')} — {it.get('rx_status')} (עד {it.get('expires_on')})")
+        lines.append("\nלהכוונה רפואית פנו לרופא/רוקח.")
+        yield "\n".join(lines)
+    else:
+        lines = [f"Prescriptions for {user.get('user_name')} ({user.get('user_id')}):"]
+        for it in items:
+            lines.append(f"- {it.get('rx_id')}: {it.get('med_name')} — {it.get('rx_status')} (expires {it.get('expires_on')})")
+        lines.append("\nfor medical guidance, consult a licensed doctor/pharmacist.")
+        yield "\n".join(lines)

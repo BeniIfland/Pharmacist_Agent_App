@@ -1,6 +1,7 @@
 import re
 from typing import Optional
 from app.db import MEDICATIONS, BRANCHES
+from app.simple_detectors import extract_rx_id,extract_user_id
 
 # A lightweight heuristic safety gate to detect medical advice requests
 # Backs up the LLM decision making
@@ -94,3 +95,13 @@ def plausible_branch_name(text: str) -> bool:
         return True
 
     return False
+
+
+# prescriptions guardrails:
+
+def plausible_rx_id(text: str) -> bool:
+    return extract_rx_id(text) is not None
+
+def plausible_user_id(text: str) -> bool:
+    return extract_user_id(text) is not None
+

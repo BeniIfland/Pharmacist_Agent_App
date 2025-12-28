@@ -50,3 +50,39 @@ def extract_branch_name(text: str) -> Optional[str]:
     # Prefer longer matches to avoid "ha" matching "haifa"
     candidates.sort(key=lambda s: len(s), reverse=True)
     return candidates[0]
+
+# next parts are relevant for the prescriptions flow
+
+
+_RX_RE = re.compile(r"\bRX[- ]?\d{5,}\b", re.IGNORECASE)
+_USER_RE = re.compile(r"\buser_\d{3}\b", re.IGNORECASE)
+
+def extract_rx_id(text: str) -> Optional[str]:
+    """
+    Deterministic extractor for prescription IDs like RX-10001 / RX 10001.
+    Returns normalized uppercase with dash: RX-10001
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+    m = _RX_RE.search(t)
+    if not m:
+        return None
+    raw = m.group(0).upper().replace(" ", "-")
+    # normalize RX10001 -> RX-10001 (if no dash)
+    if raw.startswith("RX") and "-" not in raw:
+        raw = "RX-" + raw[2:]
+    print(f"extract_rx_id result: {raw}") #TODO: delete debug
+    return raw
+
+def extract_user_id(text: str) -> Optional[str]:
+    """
+    Deterministic extractor for user IDs like user_009.
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+    m = _USER_RE.search(t)
+    if not m:
+        return None
+    return m.group(0).lower()

@@ -7,6 +7,8 @@ import re
 from app.db import INVENTORY_MAP
 from datetime import date
 from app.db import RX_BY_ID, MED_BY_ID, USER_BY_ID
+from app.db import PRESCRIPTIONS, USER_BY_ID, MED_BY_ID
+from datetime import date
 
 
 
@@ -345,14 +347,14 @@ def verify_prescription(rx_id: str) -> dict:
             prescription could not be found and may suggest verifying the
             prescription ID or contacting the issuing pharmacy or provider.
     """
-    rid = _norm(rx_id)
-    if not rid:
+    # rid = _norm(rx_id)
+    if not rx_id:
         return {"status": "NOT_FOUND"}
 
-    p = RX_BY_ID.get(rid)
+    p = RX_BY_ID.get(rx_id)
     if not p:
         return {"status": "NOT_FOUND"}
-
+    # print(f"prescription founs is: {p}")#TODO: delete
     today = date.today()
     is_expired_by_date = today > p.expires_on
     med = MED_BY_ID.get(p.med_id)
@@ -378,3 +380,120 @@ def verify_prescription(rx_id: str) -> dict:
             "expires_on": p.expires_on.isoformat(),
         },
     }
+
+
+def get_prescriptions_for_user(user_id: str) -> dict:
+    """
+    Tool Name: get_prescriptions_for_user
+    Resolve and list all prescriptions associated with a specific user
+    using a deterministic, factual-only lookup.
+
+    Purpose:
+        Retrieve a complete, stable list of prescriptions belonging to a
+        single user from the synthetic database. This tool enables the agent
+        to answer questions such as “What prescriptions do I have?” or
+        “List my active/expired prescriptions” while remaining strictly
+        grounded in stored data and avoiding medical interpretation or
+        recommendations.
+
+    Parameters:
+        user_id (str):
+            The unique identifier of the user. The lookup is resilient to
+            leading/trailing whitespace and is case-insensitive; the value
+            is normalized to lowercase prior to matching.
+
+    Returns:
+        dict:
+            A structured result with a strict schema:
+            - status (Literal["OK", "NOT_FOUND"]):
+                Indicates whether the user was found.
+            - user (dict | None):
+                Present only when status == "OK". Contains:
+                    - user_id (str):
+                        The normalized user identifier.
+                    - user_name (str):
+                        The full name of the user.
+            - prescriptions (list[dict]):
+                Present only when status == "OK". A list of prescription
+                records, each containing:
+                    - rx_id (str):
+                        Prescription identifier.
+                    - med_id (str):
+                        Medication identifier.
+                    - med_name (str | None):
+                        Human-readable medication name, if available.
+                    - rx_status (Literal["VALID", "EXPIRED", "CANCELLED"]):
+                        Final computed prescription status.
+                    - expires_on (str):
+                        Expiration date in ISO-8601 format (YYYY-MM-DD).
+
+    Status Resolution Rules:
+        For each prescription, the returned rx_status is computed
+        deterministically using the same logic as `verify_prescription`:
+        - If the stored status is "CANCELLED", the final status is
+          "CANCELLED".
+        - If the stored status is not "CANCELLED" and the current date is
+          later than expires_on, the final status is "EXPIRED".
+        - Otherwise, the prescription is considered "VALID".
+
+    Error Handling:
+        This function does not raise exceptions.
+        - If user_id is empty or invalid after normalization,
+          status="NOT_FOUND" is returned.
+        - If no user record exists for the given user_id,
+          status="NOT_FOUND" is returned.
+
+    Determinism Guarantees:
+        - The returned list of prescriptions is sorted by rx_id to ensure
+          stable ordering across repeated calls with the same data.
+        - All status computations are derived solely from stored fields and
+          the current date.
+
+    Fallback Behavior:
+        - OK:
+            The calling flow may present the list of prescriptions directly
+            to the user or apply additional filtering (e.g., show only
+            VALID prescriptions) at the presentation layer.
+        - NOT_FOUND:
+            The calling flow should inform the user that no such user was
+            found and may request verification of the user identifier or
+            terminate the prescription-related flow gracefully.
+    
+    Returns:
+      - {status:"OK", user:{user_id, user_name}, prescriptions:[...]}
+      - {status:"NOT_FOUND"}
+    """
+    uid = (user_id or "").strip().lower()
+    if not uid:
+        return {"status": "NOT_FOUND"}
+
+    user = USER_BY_ID.get(uid)
+    if not user:
+        return {"status": "NOT_FOUND"}
+
+    today = date.today()
+    out = []
+    for p in PRESCRIPTIONS: #can be iptimized using a dedicated index
+        if p.user_id.lower() != uid:
+            continue
+
+        med = MED_BY_ID.get(p.med_id)
+        # Recompute final status same way verify_prescription does based on facts such as the date
+        final = p.status
+        if p.status != "CANCELLED" and today > p.expires_on:
+            final = "EXPIRED"
+
+        out.append({
+            "rx_id": p.rx_id,
+            "med_id": p.med_id,
+            "med_name": med.display_name if med else None,
+            "rx_status": final,
+            "expires_on": p.expires_on.isoformat(),})
+
+    # sorting (optional)
+    out.sort(key=lambda r: r["rx_id"])
+
+    return {
+        "status": "OK",
+        "user": {"user_id": uid, "user_name": user.full_name},
+        "prescriptions": out,}
