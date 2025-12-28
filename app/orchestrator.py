@@ -8,10 +8,12 @@ from app.simple_detectors import detect_lang,extract_branch_name
 from app.llm import extract_med_name, render_med_info_stream, render_ambiguous_stream, render_not_found_stream, render_ask_med_name_stream
 from app.llm import detect_intent_llm, render_small_talk_stream
 from app.llm import render_ask_branch_stream,render_ask_med_and_branch_stream,render_ambiguous_branch_stream,render_branch_not_found_stream
-from app.safety import is_medical_advice_request
+from app.safety import is_medical_advice_request, plausible_branch_name,plausible_med_name,is_smalltalk_or_meta
 from app.llm import render_refusal_stream, render_stock_check_stream
 from app.intent import IntentResult
 from app.tools import get_branch_by_name
+from typing import Optional
+from app.safety import is_cancel
 
 
 def _yield_stream(*,stream: Iterator[str],assistant: ChatMessage,history: list[ChatMessage],flow: FlowState,tool_calls: list[ToolCallRecord],) -> Iterator[Tuple[str, ChatResponse]]:
@@ -135,11 +137,10 @@ def run_med_info_flow(
     history: list[ChatMessage],
     tool_calls: list[ToolCallRecord],
 ) -> Iterator[Tuple[str, ChatResponse]]:
-    """
-    Same functionality as your current med_info section, just structured.
-    """
+    #TODO: DOCUMENTATION POR FAVOR
     if flow.step == "extract_med_name":
         user_text = req.message.strip()
+        awaiting = flow.slots.get("_awaiting")  # may be "med_name" or None
         extracted = extract_med_name(user_text)
         tool_calls.append(
             ToolCallRecord(
@@ -147,8 +148,12 @@ def run_med_info_flow(
                 args={"text": user_text},
                 result={"extracted": extracted},))
         
-        candidate = (extracted or user_text).strip() #always produce a candidate
-        if not candidate: #if no med in the message (but we are in the flow #TODO: think if we ended up in the flow mistakenly
+        candidate = extracted.strip() if extracted else None #Only accept raw user_text as candidate if we explicitly asked for a med name
+        if not candidate and awaiting == "med_name": #if no med in the message (but we are in the flow #TODO: think if we ended up in the flow mistakenly
+            candidate = user_text
+        # If we still don't have a candidate, ask for med name
+        if not candidate:
+            flow.slots["_awaiting"] = "med_name" #safety mechanism
             assistant.content = ""
             # flow.step = "extract_med_name"  # stay here
             yield from _yield_stream(
@@ -156,28 +161,23 @@ def run_med_info_flow(
                 assistant=assistant,
                 history=history,
                 flow=flow,
-                tool_calls=tool_calls,
-            )
+                tool_calls=tool_calls,)
             return
 
         flow.slots["med_name"] = candidate
+        if awaiting == "med_name":
+            flow.slots.pop("_awaiting", None) #waiting resolved
         flow.step = "lookup"
 
     if flow.step == "lookup":
         med_name = (flow.slots.get("med_name") or "").strip()
         tool_result = get_medication_by_name(med_name)
-        tool_calls.append(
-            ToolCallRecord(
-                name="get_medication_by_name",
-                args={"name": med_name},
-                result=tool_result,
-            )
-        )
+        tool_calls.append(ToolCallRecord(name="get_medication_by_name", args={"name": med_name},result=tool_result,))
 
         if tool_result["status"] == "OK":
             med = tool_result["medication"]
+            flow.slots.pop("_awaiting", None) #waiting resolved
             
-
             assistant.content = ""
             yield from _yield_stream(
                 stream=render_med_info_stream(lang, med),
@@ -203,27 +203,28 @@ def run_med_info_flow(
         if tool_result["status"] == "AMBIGUOUS":
             options = [m["display_name"] for m in tool_result["matches"]]
             flow.step = "extract_med_name"
-
+            flow.slots.pop("med_name", None)
+            flow.slots["_awaiting"] = "med_name" #safety mechanism
             assistant.content = ""
             yield from _yield_stream(
                 stream=render_ambiguous_stream(lang, options),
                 assistant=assistant,
                 history=history,
                 flow=flow,
-                tool_calls=tool_calls,
-            )
+                tool_calls=tool_calls,)
             return
 
         # NOT_FOUND
         flow.step = "extract_med_name"
+        flow.slots.pop("med_name", None)
+        flow.slots["_awaiting"] = "med_name" #safety mechanism
         assistant.content = ""
         yield from _yield_stream(
             stream=render_not_found_stream(lang),
             assistant=assistant,
             history=history,
             flow=flow,
-            tool_calls=tool_calls,
-        )
+            tool_calls=tool_calls,)
         return
 
     # Last-resort fallback (unchanged behavior)
@@ -252,27 +253,42 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
     # Flow Step: collect 
     #collecting necessary information frm the reuest
     if flow.step in (None, "", "collect"): #safety for first step
+        awaiting = flow.slots.get("_awaiting") # "med_name" | "branch_name" | None
         # 1) med_name
         if not flow.slots.get("med_name"):
             extracted = extract_med_name(req.message.strip())
             tool_calls.append(ToolCallRecord(name="extract_med_name", args={"text": req.message.strip()}, result={"extracted": extracted},))
-            candidate = (extracted or req.message.strip()).strip()
+            candidate = extracted.strip() if extracted else None
+            if not candidate and awaiting == "med_name":
+                # only when we explicitly asked for a med name
+                candidate = req.message.strip()
             if candidate:
-                flow.slots["med_name"] = extracted.strip()
+                flow.slots["med_name"] = candidate
+                if awaiting == "med_name":
+                    flow.slots.pop("_awaiting", None)
 
         # 2) branch_name (deterministic)
         if not flow.slots.get("branch_name"):
             br = extract_branch_name(req.message)
             tool_calls.append(ToolCallRecord(name="extract_branch_name", args={"text": req.message}, result={"extracted": br},))
-            candidate_br = (br or req.message.strip()).strip()
+            candidate_br = br.strip() if br else None
+            if not candidate_br and awaiting == "branch_name":
+            # only when we explicitly asked for a branch
+                candidate_br = req.message.strip()
             if candidate_br:
                 flow.slots["branch_name"] = candidate_br
+                if awaiting == "branch_name":
+                    flow.slots.pop("_awaiting", None)
+                 
+                
 
         # Ask for what’s missing (minimal)
         missing_med = not flow.slots.get("med_name")
         missing_branch = not flow.slots.get("branch_name")
         print(f"missing_med:{missing_med} missing_branch:{missing_branch}") #TODO: debug delete
+        print(f"flow slots: med: {flow.slots.get("med_name","____")}, branch: {flow.slots.get("branch_name","____")}")
         if missing_med and missing_branch:
+            flow.slots["_awaiting"] = "med_name" # safety mechanism #TODO: we may want to put a label of both_missing and address it in should_escape_flow
             assistant.content = ""
             # You can make a dedicated renderer; for now reuse verbalizer approach or a deterministic string streamer
             for delta in render_ask_med_and_branch_stream(lang):
@@ -281,6 +297,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             return
 
         if missing_med:
+            flow.slots["_awaiting"] = "med_name"
             assistant.content = ""
             for delta in render_ask_med_name_stream(lang):
                 assistant.content += delta
@@ -288,6 +305,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             return
 
         if missing_branch:
+            flow.slots["_awaiting"] = "branch_name"
             assistant.content = ""
             for delta in render_ask_branch_stream(lang):
                 assistant.content += delta
@@ -306,6 +324,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             options = [m["display_name"] for m in med_res["matches"]]
             flow.step = "collect"
             flow.slots.pop("med_name", None)  # force user to clarify
+            flow.slots["_awaiting"] = "med_name"
             assistant.content = ""
             for delta in render_ambiguous_stream(lang, options):
                 assistant.content += delta
@@ -314,6 +333,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
 
         if med_res["status"] != "OK":
             #NOT_FOUND
+            flow.slots["_awaiting"] = "med_name"
             flow.step = "collect"
             flow.slots.pop("med_name", None)
             flow.slots.pop("med", None)
@@ -323,7 +343,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
                 yield delta, ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
             return
 
-        flow.slots["med"] = med_res["medication"]  # cache resolved med dict
+        flow.slots["med"] = med_res["medication"]  
         flow.step = "resolve_branch"
 
     # Step: resolve_branch 
@@ -335,6 +355,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
         if br_res["status"] == "AMBIGUOUS":
             options = [b["display_name"] for b in br_res["matches"]]
             flow.step = "collect"
+            flow.slots["_awaiting"] = "branch_name" #safety mechanism
             flow.slots.pop("branch_name", None)
             assistant.content = ""
             for delta in render_ambiguous_branch_stream(lang, options):
@@ -343,7 +364,9 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             return
 
         if br_res["status"] != "OK":
+            #NOT_FOUND
             flow.step = "collect"
+            flow.slots["_awaiting"] = "branch_name" #safety mechanism
             flow.slots.pop("branch_name", None)
             flow.slots.pop("branch", None)
             assistant.content = ""
@@ -353,16 +376,17 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             return
 
         flow.slots["branch"] = br_res["branch"] #save correct value after it was resolved (status == OK)
+        flow.slots.pop("_awaiting", None)  # waiting resolved
         flow.step = "stock"
 
-    # ---- Step: stock ----
+    #Step: stock 
     if flow.step == "stock":
         med = flow.slots["med"] 
         branch = flow.slots["branch"]
         stock_res = get_stock(branch["branch_id"], med["med_id"])
         tool_calls.append(ToolCallRecord(name="get_stock",args={"branch_id": branch["branch_id"], "med_id": med["med_id"]},result=stock_res,))
 
-        # Always OK in the simple tool; allows expension if time allows
+        # Always OK in the simple tool, allows expension if time allows
         stock_status = stock_res.get("stock_status", "UNKNOWN")
 
         assistant.content = ""
@@ -370,6 +394,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             assistant.content += delta
             yield delta, ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
 
+        flow.slots.pop("_awaiting", None)  # waiting resolved
         _finalize_flow(flow)
         # CRITICAL: send updated flow state to client
         yield from _yield_state_only(assistant=assistant,history=history,flow=flow,tool_calls=tool_calls,)
@@ -379,8 +404,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             answer=assistant.content,
             history=history,
             flow=flow_reset,
-            tool_calls=tool_calls,
-        )   
+            tool_calls=tool_calls,)   
 
         return
 
@@ -389,7 +413,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
 def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
     """ Stateless orchestrator. Yields (delta_text, partial_response) for streaming UI. """
 
-    lang = detect_lang(req.message)
+    lang = detect_lang(req.message) #simple heuristic that using encoding to detect hebrew\english
 
     history = list(req.history)
     flow = req.flow or FlowState()
@@ -406,6 +430,7 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
     if is_medical_advice_request(req.message):
         tool_calls.append(ToolCallRecord(name="safety_gate", args={"text": req.message}, result={"action": "refuse_advice"},))
         print("Safety gate activated") #TODO: delete
+        flow.slots.pop("_awaiting", None) #aborting, should stop eaiting #TODO: hope it won't cause a bug
 
         assistant.content = ""
         yield from _yield_stream(
@@ -415,6 +440,17 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
             flow=FlowState(),   # reset flow (same as before)
             tool_calls=tool_calls,)
         return
+
+    # safety mechanism gate to escape flow if we are stuck on waiting and user wants to proceed or not co-operating
+    reason = should_escape_flow(flow, req.message)
+    if reason:
+        print(f"Escaping flow because: {reason}") #TODO: delete debugging
+        tool_calls.append(ToolCallRecord(
+            name="flow_escape",
+            args={"flow": flow.name, "text": req.message},
+            result={"action": "reset_and_reroute", "reason": reason},))
+        flow = FlowState()  # reset so router will route and not continue the current flow
+    # IMPORTANT: now proceed to normal routing (LLM intent detector)
 
     # --- Route / Continue flow 
     flow, intent_result, st_lang = _route_or_continue_flow(req=req,flow=flow,lang_heuristic=lang,tool_calls=tool_calls,)
@@ -479,5 +515,33 @@ def _yield_state_only(
         answer=assistant.content,
         history=history,
         flow=flow,
-        tool_calls=tool_calls,
-    )
+        tool_calls=tool_calls,)
+
+
+# a safety mechanism which is in charge of not getting stuck inside flows when waiting for the user to fill missing slots
+
+def should_escape_flow(flow: FlowState, user_text: str) -> Optional[str]:
+    if not flow or not flow.name or flow.done:
+        return None
+
+    if is_cancel(user_text): # user wants to cancel and types a clear cancel pattern
+        return "cancel"
+
+    # If user is clearly doing small talk or meta, escape immediately
+    if is_smalltalk_or_meta(user_text):
+        return "smalltalk_or_meta"
+
+    awaiting = flow.slots.get("_awaiting")
+
+    # If we're awaiting a slot and user gave a plausible slot answer,
+    # DO NOT escape and let the flow resolve it.
+    if awaiting == "med_name" and plausible_med_name(user_text):
+        return None #not to cancel and not to re-route
+    if awaiting == "branch_name" and plausible_branch_name(user_text):
+        return None #not to cancel and not to re-route
+
+    # Otherwise allow reroute (new topic / long message / not a slot answer)
+    if awaiting in ("med_name", "branch_name"):
+        return f"awaiting_{awaiting}_but_not_plausible"
+
+    return None

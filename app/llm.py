@@ -47,7 +47,7 @@ def detect_intent_llm(text: str) -> IntentResult:
             f"User message:\n{text}"
         ),
     )
-    print("[router raw]", resp.output_text) #TODO: delete itstemporary for debugging
+    print("[router raw]", resp.output_text) #TODO: delete  debugging
     raw = resp.output_text or ""
     json_str = _extract_json_object(raw)
     data = json.loads(json_str)
@@ -250,8 +250,9 @@ def render_not_found_stream(lang: str) -> Iterator[str]:
     :return: streamed text iterator
     :rtype: Iterator[str]
     """
-    instruction = "Inform the user the medication was not found in our system and ask for a different name or spelling."
-    facts = "Result: NOT_FOUND"
+    # instruction = "Ask the user to make sure he mentioned the "
+    instruction = "Inform the user that you couldn't find the medication bceause no medicine was mentioned, misspelling or it doesn't exist in the system, ask to mention a medicine or a different name or spelling."
+    facts = "no medication found"
     return render_text_stream(lang, instruction, facts)
 
 
@@ -339,6 +340,6 @@ def render_ambiguous_branch_stream(lang: str, options: list[str]) -> Iterator[st
 def render_branch_not_found_stream(lang: str) -> Iterator[str]:
     print("render_branch_not_found_stream") #TODO: delete
     if lang == "he":
-        yield "לצערי לא מצאתי את הסניף הזה אולי אין לנו סניף במקום המדובר. אפשר לכתוב עיר/סניף כמו: תל אביב / ירושלים / חיפה."
+        yield "לצערי לא מצאתי את הסניף הזה אולי אין לנו סניף במקום המדובר או שישנה טעות באיות. אפשר לכתוב עיר/סניף כמו: תל אביב / ירושלים / חיפה."
     else:
-        yield "Unfortunately I couldn’t find that branch, maybe we don't have a branch in this location. Try a city/branch like: Tel Aviv / Jerusalem / Haifa."
+        yield "Unfortunately I couldn’t find that branch, maybe we don't have a branch in this location or you had a spelling mistake. Try a city/branch like: Tel Aviv / Jerusalem / Haifa."
