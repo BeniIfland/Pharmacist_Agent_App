@@ -9,7 +9,8 @@ from datetime import date
 from app.db import RX_BY_ID, MED_BY_ID, USER_BY_ID
 
 
-#TODO: mayabe an additional error is needed
+
+
 ToolStatus = Literal["OK", "NOT_FOUND", "AMBIGUOUS"] #define possible tool outcomes
 
 

@@ -1,8 +1,6 @@
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
-# from pydantic import BaseModel
-# from typing import Optional
 from typing import Iterator
 from app.intent import IntentResult
 import json
@@ -181,11 +179,11 @@ def render_text_stream(lang: str, instruction: str, facts: str) -> Iterator[str]
 You are a pharmacist assistant UI text generator.
 
 Rules:
-- You are allowed to respond ONLY in English or Hebrew
+- You are allowed to respond ONLY in English or Hebrew, and you can say these are the only languages you speak if addressed in another.
 - This time reply in {language}.
 - Use ONLY the facts provided provided to generate your response. Do not add medical advice, diagnosis, dosage, recommendations, or purchase encouragement from your prior knowledge.
 - If the user asks for advice, refuse briefly and suggest consulting a pharmacist/doctor (in the same language).
-- Keep it concise (3-6 short lines).
+- Keep it concise (3-6 lines) but always include a relevant into to make your reply sound human for smooth user experience".
 - If you are missing a required fact, ask a short clarifying question.
 - You HAVE to follow the following instruction:
 
@@ -206,6 +204,7 @@ Facts:
             if event.type == "response.output_text.delta":
                 yield event.delta
 
+#med_info renderers
 
 def render_med_info_stream(lang: str, med: dict) -> Iterator[str]:
     """
@@ -251,7 +250,7 @@ def render_not_found_stream(lang: str) -> Iterator[str]:
     :return: streamed text iterator
     :rtype: Iterator[str]
     """
-    instruction = "Inform the user the medication was not found in the database and ask for a different name or spelling."
+    instruction = "Inform the user the medication was not found in our system and ask for a different name or spelling."
     facts = "Result: NOT_FOUND"
     return render_text_stream(lang, instruction, facts)
 
@@ -275,6 +274,7 @@ def render_small_talk_stream(lang: str, user_text: str):
         "You are a Pharmacist Assistant, respond politely to small talk and greeting."
         "You may greet, thank, and explain your capabilities. "
         "Do NOT provide medical advice, diagnosis, or recommendations."
+        "And you are NOT allowed to talk about inventory, ot prescriptions."
     )
     facts = (
         f"User said: {user_text}\n"
@@ -291,3 +291,54 @@ def render_refusal_stream(lang: str, user_text: str):
     )
     facts = f"User request: {user_text}"
     return render_text_stream(lang, instruction, facts)
+
+#stock_check renderers:
+
+def render_stock_check_stream(lang: str, med: dict, branch: dict, stock_status: str):
+    # med is Medication dict from tool_result["medication"]
+    # branch is {"branch_id":..., "display_name":...} from get_branch_by_name
+    instructions = (
+        "You are a pharmacist assistant. Provide factual stock availability only.\n"
+        "No advice, no recommendations, no dosage, no diagnosis.\n"
+        "Do not encourage purchase.\n"
+        "Point out that availability may change and offer additional help."
+        "Keep it short.\n")
+    facts = (
+        f"Medication: {med['display_name']} (active ingredient: {med['active_ingredient']}).\n"
+        f"Branch: {branch['display_name']}.\n"
+        f"Stock status: {stock_status}.\n")
+    
+    return render_text_stream(lang, instructions, facts)  # whatever you already use
+
+
+def render_ask_branch_stream(lang: str) -> Iterator[str]: #simple - can be replaced by the LLM - based render_text_stream
+    text = "באיזה סניף מדובר? (למשל תל אביב / ירושלים / חיפה)" if lang == "he" else \
+           "Which branch/city? (e.g., Tel Aviv / Jerusalem / Haifa)"
+    yield text
+
+ #simple - can be replaced by the LLM - based render_text_stream
+def render_ask_med_and_branch_stream(lang: str) -> Iterator[str]:
+    text = "לאילו תרופה וסניף התכוונת?" if lang == "he" else "Which medication and branch/city did you mean?"
+    yield text
+
+ #simple - can be replaced by the LLM - based render_text_stream
+def render_ambiguous_branch_stream(lang: str, options: list[str]) -> Iterator[str]:
+    if lang == "he":
+        yield "למה התכוונת? ציין רק אחד בבקשה:\n- " + "\n- ".join(options)
+    else:
+        yield "Which one did you mean? Pick one please:\n- " + "\n- ".join(options)
+
+
+#  #simple - can be replaced by the LLM - based render_text_stream
+# def render_branch_not_found_stream(lang: str) -> Iterator[str]:
+#     yield ("לא מצאתי את הסניף הזה. אנא נסה.י תל אביב / ירושלים / חיפה."
+#            if lang == "he" else
+#            "I couldn’t find that branch. Please try Tel Aviv / Jerusalem / Haifa.")
+
+ #simple - can be replaced by the LLM - based render_text_stream
+def render_branch_not_found_stream(lang: str) -> Iterator[str]:
+    print("render_branch_not_found_stream") #TODO: delete
+    if lang == "he":
+        yield "לצערי לא מצאתי את הסניף הזה אולי אין לנו סניף במקום המדובר. אפשר לכתוב עיר/סניף כמו: תל אביב / ירושלים / חיפה."
+    else:
+        yield "Unfortunately I couldn’t find that branch, maybe we don't have a branch in this location. Try a city/branch like: Tel Aviv / Jerusalem / Haifa."

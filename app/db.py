@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Literal, Tuple
 from datetime import date
-from tools import _norm
+from app.utils import norm
 
 #python decorators for simple classes that automatically creates __init__, __eq__ etc.
 #good for readability, and for data rather than behavior
@@ -153,7 +153,7 @@ RX_BY_ID: Dict[str, Prescription] = {p.rx_id.upper(): p for p in PRESCRIPTIONS}
 
 # lookup maps
 BRANCH_ALIAS_MAP: Dict[str, str] = {
-    _norm(alias): b.branch_id
+    norm(alias): b.branch_id
     for b in BRANCHES
     for alias in ([b.display_name] + b.aliases)
 }
