@@ -229,7 +229,7 @@ def render_not_found_stream(lang: str) -> Iterator[str]:
     :rtype: Iterator[str]
     """
     # instruction = "Ask the user to make sure he mentioned the "
-    instruction = "Inform the user that you couldn't find the medication bceause no medicine was mentioned, misspelling or it doesn't exist in the system, ask to mention a medicine or a different name or spelling."
+    instruction = "Inform the user that you couldn't find the medication bceause of misspelling or it doesn't exist in the system, ask fr a different name or spelling."
     facts = "no medication found"
     return render_text_stream(lang, instruction, facts)
 
@@ -280,7 +280,8 @@ def render_stock_check_stream(lang: str, med: dict, branch: dict, stock_status: 
         "You are a pharmacist assistant. Provide factual stock availability only.\n"
         "No advice, no recommendations, no dosage, no diagnosis.\n"
         "Do not encourage purchase.\n"
-        "Point out that availability may change and offer additional help."
+        "Point out that availability may change and offer additional help.\n"
+        "NEVER offer additional help\n"
         "Keep it short.\n")
     facts = (
         f"Medication: {med['display_name']} (active ingredient: {med['active_ingredient']}).\n"
@@ -364,7 +365,7 @@ def render_rx_verify_stream(lang: str, rx: dict) -> Iterator[str]:
     instructions = (
         "You are a pharmacist assistant. Provide factual prescription related info only.\n"
         "No advice, no recommendations, no dosage, no diagnosis.\n"
-        "No additional offers besides the factual info you provide\n"
+        "DO NOT offer additional info besides the factual info you provide\n"
         "Keep it short.\n")
     facts = (
         f"Prescription {rx.get('rx_id')} — Status: {rx.get('rx_status')}.\n"

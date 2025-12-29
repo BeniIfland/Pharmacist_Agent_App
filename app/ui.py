@@ -8,8 +8,8 @@ TRACE_LABELS = {
     "safety_gate": "Safety gate activated (medical advice refusal)",
     # "flow_escape": "Escaped flow + rerouted",
     "detect_intent": "Intent routing",
-    "extract_med_name": "Extracted medicine name",
-    "extract_branch_name": "Extracted branch name",
+    "extract_med_name": "Trying to exract medicine name",
+    "extract_branch_name": "Trying to exract branch name",
     "get_medication_by_name": "DB lookup: medication",
     "get_branch_by_name": "DB lookup: branch",
     "get_stock": "DB lookup: inventory status",
@@ -19,8 +19,8 @@ TRACE_LABELS = {
     "render_stock_check": "Render inventory info answer",
     "render_small_talk": "Render small talk",
     "render_refusal": "Render medical advice refusal",
-    "extract_rx_id": "Extracted prescription",
-    "extract_user_id" : "Extracted user ID",
+    "extract_rx_id": "Trying to exract prescription",
+    "extract_user_id" : "Trying to exract user ID",
     # "active_flow_continuation" : "Continued active flow"
 }
 
@@ -126,7 +126,7 @@ def build_ui():
 
 def trace_markdown(tool_calls) -> str:
     """
-    Turn tool\internal function calls into a clean per-turn execution timeline (Markdown).
+    Turn tool\ internal function calls into a clean per-turn execution timeline (Markdown).
     Shows each step once + a short description.
     """
     if not tool_calls:
