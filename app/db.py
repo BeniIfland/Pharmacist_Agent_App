@@ -19,7 +19,7 @@ class Medication:
 class User:
     user_id: str
     full_name: str
-    prescriptions: List[str]   # list of med_id user has a prescription for
+    # prescriptions: List[str]   # list of med_id user has a prescription for
 
 
 @dataclass(frozen=True)
@@ -95,12 +95,11 @@ MEDICATIONS: List[Medication] = [
 ]
 
 USERS: List[User] = [
-    User(user_id=f"user_{i:03d}", full_name=f"User {i}", prescriptions=[]) for i in range(1, 9)] + [ #first 8 users are without perescribtions
-    User(user_id="user_009", full_name="User 9", prescriptions=["med_003"]),  # has Amoxicillin
-    User(user_id="user_010", full_name="User 10", prescriptions=["med_005"]), # has Atorvastatin
-]
+    User(user_id=f"user_{i:03d}", full_name=f"User {i}") for i in range(1, 9)] + [ #first 8 users are without perescribtions
+    User(user_id="user_009", full_name="User 9"),  # has Amoxicillin
+    User(user_id="user_010", full_name="User 10"),] # has Atorvastatin
+    
 
-#TODO: check if I ever use them
 # helper indices
 MED_BY_ID: Dict[str, Medication] = {m.med_id: m for m in MEDICATIONS}
 USER_BY_ID: Dict[str, User] = {u.user_id: u for u in USERS}
@@ -110,12 +109,12 @@ BRANCHES: List[Branch] = [
     Branch(
         branch_id="br_001",
         display_name="Tel Aviv",
-        aliases=["tel aviv", "tlv", "תל אביב", "תא", "ת\"א"], #TODO: check if abbreviations work
+        aliases=["tel aviv", "tlv", "תל אביב", "תא", "ת\"א"], 
     ),
     Branch(
         branch_id="br_002",
         display_name="Jerusalem",
-        aliases=["jerusalem", "jlm", "ירושלים", "ם-י", "י\"ם"],#TODO: check if abbreviations work
+        aliases=["jerusalem", "jlm", "ירושלים", "י\"ם"],
     ),
     Branch(
         branch_id="br_003",

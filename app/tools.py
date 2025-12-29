@@ -38,19 +38,34 @@ def get_medication_by_name(name: str) -> Dict[str, Any]:
     """
     Tool Name: get_medication_by_name
     Resolve a user-provided medication name to a single medication record
-    from the synthetic database.
+    from the synthetic database, with explicit match metadata.
 
     Purpose:
-        Perform a deterministic lookup of a medication using its canonical
-        name or aliases, supporting basic normalization and
-        disambiguation. This tool will be used by the agent to ground responses
-        in factual data and avoid hallucinations.
+        Perform a deterministic medication lookup using a canonical display
+        name or known aliases. The lookup supports normalization, exact and
+        partial matching, and explicit ambiguity handling. This tool is
+        designed to ground agent responses in factual data, avoid
+        hallucinations, and transparently expose *how* a medication was
+        matched (e.g., via alias vs. canonical name).
 
     Parameters:
         name (str):
             The medication name as provided by the user (e.g. "Ibuprofen",
-            "Advil"). Matching is not case-sensitive and ignores leading and
-            trailing whitespace.
+            "Advil", abbreviations, or partial strings). Matching is
+            case-insensitive, ignores leading/trailing whitespace, and uses
+            normalized string comparison.
+
+    Matching Strategy:
+        The lookup proceeds deterministically in ordered stages:
+        1. Exact normalized match:
+            - Against canonical display name
+            - Against aliases
+        2. Contains match (only if no exact matches found):
+            - Against canonical display name
+            - Against aliases
+
+        For each medication, the first successful match is recorded along
+        with metadata describing how the match occurred.
 
     Returns:
         dict:
@@ -58,8 +73,8 @@ def get_medication_by_name(name: str) -> Dict[str, Any]:
             - status (Literal["OK", "NOT_FOUND", "AMBIGUOUS"]):
                 Indicates the outcome of the lookup.
             - matches (list[dict]):
-                Empty unless status == "AMBIGUOUS". When ambiguous, contains
-                candidate medications with:
+                Present only when status == "AMBIGUOUS". Contains candidate
+                medications with:
                     - med_id (str)
                     - display_name (str)
             - medication (dict | None):
@@ -69,27 +84,45 @@ def get_medication_by_name(name: str) -> Dict[str, Any]:
                     - active_ingredient (str)
                     - rx_required (bool)
                     - label_summary (str)
+            - match_info (dict | None):
+                Present only when status == "OK". Describes how the match
+                was resolved:
+                    - input (str):
+                        Raw user input.
+                    - normalized (str):
+                        Normalized form of the input used for matching.
+                    - matched_value (str):
+                        The canonical name or alias that matched.
+                    - matched_kind (Literal["canonical", "alias"]):
+                        Whether the match came from the canonical name or
+                        an alias.
+                    - match_type (Literal["exact", "contains"]):
+                        Whether the match was exact or substring-based.
 
     Error Handling:
-        This function does not raise exceptions for invalid or missing user
-        input. If the input is empty or no medication matches are found,
-        it returns status="NOT_FOUND" with empty matches and medication=None.
-        Othrwise there is a single match and status is "OK" or there's an ambiguity which will
-        be clarified with the user as part of a corresponding multi-step flow.
+        This function does not raise exceptions.
+        - If the input is empty or normalizes to an empty string,
+          status="NOT_FOUND" is returned.
+        - If no medications match, status="NOT_FOUND" is returned with
+          empty matches and medication=None.
+        - If multiple medications match (e.g., ambiguous abbreviations),
+          status="AMBIGUOUS" is returned.
 
     Fallback Behavior:
         - OK:
-            The returned medication record can be used directly by the
-            calling flow to present factual information.
+            The returned medication record and match_info may be used
+            directly by the calling flow to present factual information and
+            to explain how the medication was identified (e.g., matched via
+            alias).
         - AMBIGUOUS:
             The calling flow should ask the user to clarify which medication
-            they intended, using the returned matches.
+            they intended, using the returned matches, without relying on
+            LLM inference.
         - NOT_FOUND:
-            The calling flow may request clarification, suggest checking the
-            spelling or generic name, or fall back to a general LLM response
-            while explicitly stating that the medication was not found in
-            the database.
-    
+            The calling flow may request clarification, suggest checking
+            spelling or using a generic name, or fall back to a constrained
+            general LLM response while explicitly stating that the medication
+            was not found in the database.
     """
     q = _norm(name)
     if not q:
@@ -237,7 +270,7 @@ def get_branch_by_name(name: str) -> Dict[str, Any]:
     return {"status": "NOT_FOUND"}
 
 
-#TODO: think if need extension
+
 def get_stock(branch_id: str, med_id: str) -> dict:
     """
     Tool Name: get_stock
@@ -374,7 +407,7 @@ def verify_prescription(rx_id: str) -> dict:
     p = RX_BY_ID.get(rx_id)
     if not p:
         return {"status": "NOT_FOUND"}
-    # print(f"prescription founs is: {p}")#TODO: delete
+    
     today = date.today()
     is_expired_by_date = today > p.expires_on
     med = MED_BY_ID.get(p.med_id)

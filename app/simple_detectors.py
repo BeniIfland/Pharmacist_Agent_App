@@ -72,7 +72,6 @@ def extract_rx_id(text: str) -> Optional[str]:
     # normalize RX10001 -> RX-10001 (if no dash)
     if raw.startswith("RX") and "-" not in raw:
         raw = "RX-" + raw[2:]
-    print(f"extract_rx_id result: {raw}") #TODO: delete debug
     return raw
 
 def extract_user_id(text: str) -> Optional[str]:

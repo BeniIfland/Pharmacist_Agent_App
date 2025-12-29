@@ -19,8 +19,10 @@ from app.safety import is_cancel
 
 def _yield_stream(*,stream: Iterator[str],assistant: ChatMessage,history: list[ChatMessage],flow: FlowState,tool_calls: list[ToolCallRecord],) -> Iterator[Tuple[str, ChatResponse]]:
     """
-    Helper: consumes a delta stream, appends to assistant.content,
-    yields (delta, partial_response) each time.
+    Stream helper.
+
+    Consumes a text-delta iterator, appends each delta to the assistant message,
+    and yields (delta, ChatResponse) so the UI can update incrementally.
     """
     for delta in stream:
         assistant.content += delta
@@ -28,12 +30,14 @@ def _yield_stream(*,stream: Iterator[str],assistant: ChatMessage,history: list[C
             answer=assistant.content,
             history=history,
             flow=flow,
-            tool_calls=tool_calls,
-        )
+            tool_calls=tool_calls, )
         yield delta, partial
 
 
 def _finalize_flow(flow: FlowState) -> None:
+    """
+    Mark the current flow as completed.
+    """
     flow.done = True
     flow.step = "done"
 
@@ -52,7 +56,7 @@ def _route_or_continue_flow(
 
     if flow and flow.name and not flow.done:
         # tool_calls.append(ToolCallRecord(name="active_flow_continuation",args={"reason": "continue_active_flow", "flow": flow.name, "step": flow.step},result={"action": "continue"},))
-        print(f"[DBG] continuing active flow: {flow.name} step={flow.step}") #TODO: delete debug
+        # print(f"[DBG] continuing active flow: {flow.name} step={flow.step}") 
         return flow, None, lang_heuristic
 
     intent_result = detect_intent_llm(req.message)
@@ -74,7 +78,6 @@ def _route_or_continue_flow(
     st_lang = intent_result.lang if intent_result else lang_heuristic
     return flow, intent_result, st_lang
 
-#TODO: add chat history for small talk
 def run_small_talk_flow(
     *,
     req: ChatRequest,
@@ -115,16 +118,86 @@ def run_small_talk_flow(
     return
 
 
-def run_med_info_flow(
-    *,
-    req: ChatRequest,
-    flow: FlowState,
-    lang: str,
-    assistant: ChatMessage,
-    history: list[ChatMessage],
-    tool_calls: list[ToolCallRecord],
+def run_med_info_flow(*,req: ChatRequest,flow: FlowState,lang: str,assistant: ChatMessage,history: list[ChatMessage],tool_calls: list[ToolCallRecord],
 ) -> Iterator[Tuple[str, ChatResponse]]:
-    #TODO: DOCUMENTATION POR FAVOR
+    """
+    Tool/flow runner for the **med_info** intent.
+
+    This generator implements a small state machine (via ``flow.step`` and ``flow.slots``)
+    that collects a medication name from the user, performs a deterministic lookup in the
+    synthetic DB, and streams back factual medication label information.
+
+    The function yields incremental assistant output via ``_yield_stream(...)`` (token/segment
+    streaming), and ensures the client receives an updated ``FlowState`` at the end so the
+    next user turn starts with no active flow.
+
+    Flow steps
+    ----------
+    1) ``extract_med_name``
+        - Try to extract a medication name from the current user message using ``extract_med_name``.
+        - If extraction fails:
+            - If we *explicitly* asked the user for a med name (``flow.slots["_awaiting"] == "med_name"``),
+              treat the raw user message as the candidate (user might respond with only the name).
+            - Otherwise, ask the user to provide a medication name and stay on this step.
+        - On success, store ``flow.slots["med_name"]`` and advance to ``lookup``.
+
+    2) ``lookup``
+        - Call ``get_medication_by_name(med_name)`` and record the tool call.
+        - Handle outcomes:
+            - ``OK``: stream medication facts with ``render_med_info_stream(...)`` then finalize/reset flow.
+              If a ``match_info`` payload exists (e.g., alias match), pass it to the renderer so the
+              assistant can transparently explain the match.
+            - ``AMBIGUOUS``: ask the user to choose from options, clear the stored name, and go back to
+              ``extract_med_name`` while setting ``_awaiting="med_name"``.
+            - ``NOT_FOUND``: ask the user for a different name and return to ``extract_med_name``.
+
+    3) Fallback (last resort)
+        - If the flow is in an unexpected step, render a constrained small-talk style response
+          (useful as a safety net for misrouted turns).
+
+    Parameters
+    ----------
+    req : ChatRequest
+        Current request object holding the user's message (``req.message``) plus prior conversation
+        state (history, user_id, etc.).
+    flow : FlowState
+        Mutable flow state for the current session/turn. Uses:
+        - ``flow.step``: current step name (e.g., ``"extract_med_name"``, ``"lookup"``)
+        - ``flow.slots``: dict of collected values and internal flags:
+            - ``"med_name"``: the candidate medication name
+            - ``"_awaiting"``: internal guard flag set to ``"med_name"`` when the UI asked the user
+              to provide a medication name explicitly.
+    lang : str
+        Detected language code (typically ``"he"`` or ``"en"``). Passed to rendering helpers so all
+        user-facing prompts are localized/consistent with the agent's supported languages.
+    assistant : ChatMessage
+        Mutable assistant message object. Its ``content`` is progressively built/streamed by
+        the renderer helpers.
+    history : list[ChatMessage]
+        Conversation history, mutated by streaming helpers so that the client can display the
+        evolving assistant message.
+    tool_calls : list[ToolCallRecord]
+        Per-turn trace list for debugging/review. Each tool invocation (extract/lookup) is appended
+        here so you can render a timeline (e.g., via ``trace_markdown``).
+
+    Returns
+    -------
+    Iterator[Tuple[str, ChatResponse]]
+        A streaming iterator yielding ``(delta_text, ChatResponse)`` tuples.
+        - ``delta_text`` is the incremental chunk to append in the UI.
+        - ``ChatResponse`` is the full envelope containing the current assistant answer, updated
+          history, updated flow state, and the list of tool call records.
+
+    Notes
+    -----
+    - This flow is designed to be *factual* and *non-prescriptive*: it surfaces label-like info and
+      a brief safety note, but should not provide diagnosis/treatment recommendations.
+    - To avoid confusion in brand/generic resolution, pass ``match_info`` into the renderer when
+      lookup succeeds (e.g., “You asked for Advil; the record is Ibuprofen.”).
+    - The ``_awaiting`` slot is used as a guard so that raw user text is only treated as a med-name
+      candidate after we asked for it explicitly (prevents random sentences being misinterpreted as
+      medication names).
+    """
     if flow.step == "extract_med_name":
         user_text = req.message.strip()
         awaiting = flow.slots.get("_awaiting")  # may be "med_name" or None
@@ -133,7 +206,7 @@ def run_med_info_flow(
             ToolCallRecord(name="extract_med_name",args={"text": user_text},result={"extracted": extracted},))
         
         candidate = extracted.strip() if extracted else None #Only accept raw user_text as candidate if we explicitly asked for a med name
-        if not candidate and awaiting == "med_name": #if no med in the message (but we are in the flow #TODO: think if we ended up in the flow mistakenly
+        if not candidate and awaiting == "med_name": #if no med in the message (but we are in the flow 
             candidate = user_text
         # If we still don't have a candidate, ask for med name
         if not candidate:
@@ -227,13 +300,131 @@ def run_med_info_flow(
 
 def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assistant: ChatMessage, history: list[ChatMessage], tool_calls: list[ToolCallRecord],) -> Iterator[Tuple[str, ChatResponse]]:
     """
-    Steps:
-      - collect: ensure med_name + branch_name in slots
-      - resolve_med: get_medication_by_name
-      - resolve_branch: get_branch_by_name
-      - stock: get_stock
-      - done
+    Tool/flow runner for the **stock_check** intent.
+
+    This generator implements a multi-step state machine (via ``flow.step`` and ``flow.slots``)
+    that (1) collects a medication name and a branch name, (2) resolves each to a canonical record
+    via deterministic lookup tools, and (3) queries branch stock status for that medication.
+
+    The function yields incremental assistant output (streaming) as ``(delta_text, ChatResponse)``
+    tuples. It also appends structured ``ToolCallRecord`` entries to ``tool_calls`` for audit/debug
+    (e.g., timeline rendering in the UI).
+
+    Flow steps
+    ----------
+    1) ``collect`` (also used when ``flow.step`` is ``None``/``""``)
+        Goal: ensure ``flow.slots["med_name"]`` and ``flow.slots["branch_name"]`` exist.
+
+        - Medication collection:
+            - Attempt LLM extraction via ``extract_med_name(req.message)``.
+            - If extraction fails but we explicitly asked for it
+              (``flow.slots["_awaiting"] == "med_name"``), treat raw user message as the candidate.
+            - On success, store ``flow.slots["med_name"]``.
+
+        - Branch collection:
+            - Attempt deterministic extraction via ``extract_branch_name(req.message)``.
+            - If extraction fails but we explicitly asked for it
+              (``flow.slots["_awaiting"] == "branch_name"``), treat raw user message as the candidate.
+            - On success, store ``flow.slots["branch_name"]``.
+
+        - If either field is missing after extraction, the flow asks *only for what’s missing*:
+            - both missing: ``render_ask_med_and_branch_stream(lang)``
+            - only med missing: ``render_ask_med_name_stream(lang)``
+            - only branch missing: ``render_ask_branch_stream(lang)``
+          In these cases the flow sets ``flow.slots["_awaiting"]`` appropriately and returns,
+          staying in ``collect`` for the next turn.
+
+        - If both are present, advance to ``resolve_med``.
+
+    2) ``resolve_med``
+        Goal: resolve ``flow.slots["med_name"]`` to a canonical medication record.
+
+        - Calls ``get_medication_by_name(med_name)`` and records the tool call.
+        - Outcomes:
+            - ``AMBIGUOUS``: ask the user to clarify via ``render_ambiguous_stream(...)``,
+              clear ``med_name`` and return to ``collect`` with ``_awaiting="med_name"``.
+            - ``NOT_FOUND``: ask again via ``render_not_found_stream(...)``, clear ``med_name`` and
+              return to ``collect`` with ``_awaiting="med_name"``.
+            - ``OK``: store:
+                - ``flow.slots["med"]`` (the canonical medication record)
+                - ``flow.slots["med_match_info"]`` (optional, e.g., alias match metadata)
+              then advance to ``resolve_branch``.
+
+    3) ``resolve_branch``
+        Goal: resolve ``flow.slots["branch_name"]`` to a canonical branch record.
+
+        - Calls ``get_branch_by_name(branch_name)`` and records the tool call.
+        - Outcomes:
+            - ``AMBIGUOUS``: ask the user to clarify via ``render_ambiguous_branch_stream(...)``,
+              clear ``branch_name`` and return to ``collect`` with ``_awaiting="branch_name"``.
+            - ``NOT_FOUND``: ask again via ``render_branch_not_found_stream(...)``, clear ``branch_name`` and
+              return to ``collect`` with ``_awaiting="branch_name"``.
+            - ``OK``: store ``flow.slots["branch"]`` (canonical branch record),
+              clear ``_awaiting`` and advance to ``stock``.
+
+    4) ``stock``
+        Goal: query and present stock status for the resolved (branch, medication) pair.
+
+        - Calls ``get_stock(branch_id, med_id)`` and records the tool call.
+        - Extracts ``stock_status`` from the result (defaults to ``"UNKNOWN"`` if missing).
+        - Streams the final answer via ``render_stock_check_stream(lang, med, branch, stock_status, match_info=...)``.
+          Passes ``match_info`` (from ``med_match_info``) so the response can transparently explain
+          brand/generic alias resolution if needed.
+
+        - Finalizes and resets the flow:
+            - ``_finalize_flow(flow)``
+            - yield state-only update (so the client sees the final flow state)
+            - yield a final response with ``flow=FlowState()`` so the next turn starts with no active flow.
+
+    Parameters
+    ----------
+    req : ChatRequest
+        Current request object holding the user's message (``req.message``) plus session metadata.
+    flow : FlowState
+        Mutable flow state for this multi-turn interaction. Uses:
+        - ``flow.step``: current step (``collect``, ``resolve_med``, ``resolve_branch``, ``stock``)
+        - ``flow.slots``: collected parameters and internal flags:
+            - ``"med_name"``: user-provided or extracted medication name (pre-resolution)
+            - ``"branch_name"``: user-provided or extracted branch name (pre-resolution)
+            - ``"med"``: resolved medication record (post-resolution)
+            - ``"branch"``: resolved branch record (post-resolution)
+            - ``"med_match_info"``: optional metadata about how the medication name was matched
+            - ``"_awaiting"``: internal guard flag indicating what the flow asked the user for next
+              (``"med_name"`` / ``"branch_name"``)
+    lang : str
+        Detected language code (typically ``"he"`` or ``"en"``). Used by renderers.
+    assistant : ChatMessage
+        Mutable assistant message. Its content is built progressively during streaming.
+    history : list[ChatMessage]
+        Conversation history, updated as the assistant streams output.
+    tool_calls : list[ToolCallRecord]
+        Per-turn execution trace list. Each extractor/lookup call is appended for debugging/review.
+
+    Returns
+    -------
+    Iterator[Tuple[str, ChatResponse]]
+        Streaming iterator yielding ``(delta_text, ChatResponse)`` tuples, where:
+        - ``delta_text`` is the incremental chunk to append in the UI
+        - ``ChatResponse`` includes the current assistant answer, updated history, updated flow,
+          and the list of tool call records.
+
+    Notes
+    -----
+    - The ``_awaiting`` slot is a critical guard: it ensures that raw user text is only treated as a
+      medication/branch candidate when the user is responding to a direct prompt for that value.
+    - This flow is meant to be factual: it reports stock availability/status but should not provide
+      medical advice or treatment recommendations.
+    - If you want consistent streaming behavior across flows, consider migrating the places where you
+      manually yield from renderers (``for delta in ...``) to the shared ``_yield_stream(...)`` helper.
+      (Not required for correctness, but helps keep response envelopes uniform.)
     """
+    # Steps:
+    #   - collect: ensure med_name + branch_name in slots
+    #   - resolve_med: get_medication_by_name
+    #   - resolve_branch: get_branch_by_name
+    #   - stock: get_stock
+    #   - done
+
 
     # Flow Step: collect 
     #collecting necessary information frm the reuest
@@ -270,10 +461,10 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
         # Ask for what’s missing (minimal)
         missing_med = not flow.slots.get("med_name")
         missing_branch = not flow.slots.get("branch_name")
-        print(f"missing_med:{missing_med} missing_branch:{missing_branch}") #TODO: debug delete
-        print(f"flow slots: med: {flow.slots.get("med_name","____")}, branch: {flow.slots.get("branch_name","____")}")
+        # print(f"missing_med:{missing_med} missing_branch:{missing_branch}") 
+        # print(f"flow slots: med: {flow.slots.get("med_name","____")}, branch: {flow.slots.get("branch_name","____")}")
         if missing_med and missing_branch:
-            flow.slots["_awaiting"] = "med_name" # safety mechanism #TODO: we may want to put a label of both_missing and address it in should_escape_flow
+            flow.slots["_awaiting"] = "med_name" # safety mechanism 
             assistant.content = ""
             # You can make a dedicated renderer; for now reuse verbalizer approach or a deterministic string streamer
             for delta in render_ask_med_and_branch_stream(lang):
@@ -398,7 +589,16 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
 
 
 def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
-    """ Stateless orchestrator. Yields (delta_text, partial_response) for streaming UI. """
+    """
+    Stateless turn orchestrator for the streaming UI.
+
+    - Detects language (he/en), appends the user message + an assistant placeholder to history.
+    - Applies a safety override for medical-advice requests (refuse + reset flow).
+    - Optionally escapes an in-progress flow if the user is not cooperating / wants to move on.
+    - Routes to (or continues) the active flow using the LLM intent router.
+    - Dispatches to the matching flow runner, which streams back (delta, ChatResponse).
+    - Falls back to small-talk renderer if nothing matched.
+    """
 
     lang = detect_lang(req.message) #simple heuristic that using encoding to detect hebrew\english
 
@@ -416,8 +616,7 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
     # --- Safety override (unchanged functionality) ---
     if is_medical_advice_request(req.message):
         tool_calls.append(ToolCallRecord(name="safety_gate", args={"text": req.message}, result={"action": "refuse_advice"},))
-        print("Safety gate activated") #TODO: delete
-        flow.slots.pop("_awaiting", None) #aborting, should stop eaiting #TODO: hope it won't cause a bug
+        flow.slots.pop("_awaiting", None) #aborting, should stop eaiting 
 
         assistant.content = ""
         yield from _yield_stream(
@@ -431,15 +630,14 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
     # safety mechanism gate to escape flow if we are stuck on waiting and user wants to proceed or not co-operating
     reason = should_escape_flow(flow, req.message)
     if reason:
-        print(f"Escaping flow because: {reason}") #TODO: delete debugging
         # tool_calls.append(ToolCallRecord( name="flow_escape", args={"flow": flow.name, "text": req.message}, result={"action": "reset_and_reroute", "reason": reason},))
         flow = FlowState()  # reset so router will route and not continue the current flow
-    # IMPORTANT: now proceed to normal routing (LLM intent detector)
 
+    # IMPORTANT: now proceed to normal routing (LLM intent detector)
     # --- Route / Continue flow 
     flow, intent_result, st_lang = _route_or_continue_flow(req=req,flow=flow,lang_heuristic=lang,tool_calls=tool_calls,)
 
-    print(f"[DBG] flow={flow.name} step={flow.step} lang={lang} intent={getattr(intent_result,'intent',None)}") #TODO: delete
+    # print(f"[DBG] flow={flow.name} step={flow.step} lang={lang} intent={getattr(intent_result,'intent',None)}") 
 
     # Dispatch by flow name 
     if flow.name == "small_talk" and not flow.done:
@@ -480,13 +678,14 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
 
 
 
-def _yield_state_only(
-    *,
-    assistant: ChatMessage,
-    history: list[ChatMessage],
-    flow: FlowState,
-    tool_calls: list[ToolCallRecord],
+def _yield_state_only(*,assistant: ChatMessage,history: list[ChatMessage],flow: FlowState,tool_calls: list[ToolCallRecord],
 ) -> Iterator[Tuple[str, ChatResponse]]:
+    """
+    Yield a no-content update to propagate the latest FlowState to the client.
+
+    Used at flow completion to ensure the UI receives the final flow state
+    (e.g., marked as done) even when no additional text is streamed.
+    """
     # Empty delta, but updated flow state reaches the UI and helps avoid not terminating flows
     yield " ", ChatResponse(
         answer=assistant.content,
@@ -496,11 +695,65 @@ def _yield_state_only(
 
 def run_rx_verify_flow(*,req: ChatRequest,flow: FlowState,lang: str,assistant: ChatMessage,history: list[ChatMessage],tool_calls: list[ToolCallRecord],) -> Iterator[Tuple[str, ChatResponse]]:
     """
-    Steps:
-      - collect: need rx_id OR user_id
-      - verify_rx: verify_prescription
-      - list_user_rx: get_prescriptions_for_user
-      - done
+    Tool/flow runner for the **rx_verify** intent.
+
+    This generator implements a small state machine that can verify a single prescription
+    by rx_id *or* list prescriptions for a user by user_id. It streams assistant output and
+    records all extractor/tool calls in ``tool_calls`` for debugging/audit.
+
+    Steps
+    -----
+    - ``collect``:
+        Extract ``rx_id`` and ``user_id`` from the user's message (regex-based extractors).
+        If an rx_id is found -> go to ``verify_rx``.
+        Else if a user_id is found -> go to ``list_user_rx``.
+        Else prompt the user for either value and stay in ``collect``.
+        Uses ``flow.slots["_awaiting"]`` as a guard to only accept raw user text as a candidate
+        when the assistant explicitly asked for it.
+    - ``verify_rx``:
+        Call ``verify_prescription(rx_id)``.
+        If NOT_FOUND -> ask again for rx_id and return to ``collect``.
+        If OK -> stream verification result, finalize flow, then reset flow on the client.
+    - ``list_user_rx``:
+        Call ``get_prescriptions_for_user(user_id)``.
+        If user not found -> ask again for user_id and return to ``collect``.
+        If OK -> stream the user's prescription list, finalize flow, then reset flow on the client.
+    - Fallback:
+        If the flow reaches an unexpected step, respond via the constrained small-talk renderer.
+
+    Parameters
+    ----------
+    req : ChatRequest
+        Current request containing the user's message (``req.message``) and prior state.
+    flow : FlowState
+        Mutable flow state. Uses:
+        - ``flow.step``: current step name (``collect``, ``verify_rx``, ``list_user_rx``)
+        - ``flow.slots``: collected values and internal flags:
+            - ``"rx_id"``: extracted or user-provided prescription id
+            - ``"user_id"``: extracted or user-provided user id
+            - ``"_awaiting"``: guard indicating what we asked the user for next
+              (``"rx_id"``, ``"user_id"``, or ``"rx_or_user"``)
+    lang : str
+        Detected language code (e.g., ``"he"`` / ``"en"``), passed to renderers.
+    assistant : ChatMessage
+        Mutable assistant message that is built during streaming.
+    history : list[ChatMessage]
+        Conversation history updated as output is streamed.
+    tool_calls : list[ToolCallRecord]
+        Per-turn tool trace list populated with extractor calls and DB/tool calls.
+
+    Returns
+    -------
+    Iterator[Tuple[str, ChatResponse]]
+        Streaming iterator yielding ``(delta_text, ChatResponse)`` tuples.
+
+    Notes
+    -----
+    - ``extract_rx_id`` / ``extract_user_id`` are regex-based; they are recorded in ``tool_calls``
+      even if they return None for transparency.
+    - The flow finalization pattern is:
+        stream final content -> ``_finalize_flow(flow)`` -> ``_yield_state_only(...)`` -> yield a
+        final response with ``flow=FlowState()`` so the next turn begins with no active flow.
     """
     if flow.step in (None, "", "collect"):
         awaiting = flow.slots.get("_awaiting")  # safety mechanism
@@ -553,7 +806,7 @@ def run_rx_verify_flow(*,req: ChatRequest,flow: FlowState,lang: str,assistant: C
         rx_id = (flow.slots.get("rx_id") or "").strip()
         
         res = verify_prescription(rx_id)
-        # print(f"res is: {res}")
+        
         tool_calls.append(ToolCallRecord(name="verify_prescription",args={"rx_id": rx_id},result=res,))
 
         if res["status"] != "OK":
@@ -634,6 +887,13 @@ def run_rx_verify_flow(*,req: ChatRequest,flow: FlowState,lang: str,assistant: C
 # a safety mechanism which is in charge of not getting stuck inside flows when waiting for the user to fill missing slots
 
 def should_escape_flow(flow: FlowState, user_text: str) -> Optional[str]:
+    """
+    Decide whether to abort the current flow and reroute.
+
+    Returns a short reason string if the flow should be escaped,
+    or None if the flow should continue.
+    """
+
     if not flow or not flow.name or flow.done:
         return None
 

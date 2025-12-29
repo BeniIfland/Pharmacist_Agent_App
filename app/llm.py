@@ -24,7 +24,7 @@ def _extract_json_object(text: str) -> str:
 
 def detect_intent_llm(text: str) -> IntentResult:
     resp = client.responses.create(
-        model="gpt-5-mini",
+        model="gpt-5",
         reasoning={"effort": "minimal"},
         max_output_tokens=120,
         input=(
@@ -46,9 +46,8 @@ def detect_intent_llm(text: str) -> IntentResult:
             '  "notes": <a short description on why you chose this intent>\n' #debugging and evaluation
             "}\n\n"
             f"User message:\n{text}"
-        ),
-    )
-    print("[router raw]", resp.output_text) #TODO: delete  debugging
+        ),)
+    
     raw = resp.output_text or ""
     json_str = _extract_json_object(raw)
     data = json.loads(json_str)
@@ -56,19 +55,19 @@ def detect_intent_llm(text: str) -> IntentResult:
     # Validate using Pydantic
     return IntentResult.model_validate(data)
 
-#TODO: remove if not used
+#Not used, most basic LLM query
 def qury_llm(message: str) -> str:  #not good for streaming
     response = client.chat.completions.create(
-        model="gpt-5-mini",
+        model="gpt-5",
         messages=[
             {"role": "user", "content": message}])
     return response.choices[0].message.content
 
 
-#TODO: remove if not used
+#not used basic stream query
 def stream_llm(message: str):
 
-    with client.responses.stream(model="gpt-5-mini",input=message, #most LLM responses are cotrolled and broken down by the flow - hence a small version is better and faster
+    with client.responses.stream(model="gpt-5",input=message, #most LLM responses are cotrolled and broken down by the flow - hence a small version is better and faster
             reasoning={"effort": "minimal"},  max_output_tokens=160   
                                  ) as stream:
         for event in stream:
@@ -88,12 +87,8 @@ def extract_med_name(text: str) -> str | None:
     :return: 
     :rtype: str | None
     """
-    #TODO: add a small sanitization and a guardrail agains PI- for security vertical
-    #TODO: can add a simple string manipulation on 'text' as part of sanitization
-    #TODO: deal with ambiguity or several medicines in user's message
-    #TODO: refine prompt (from paper + chat)
     resp = client.responses.create(
-        model="gpt-5-mini",
+        model="gpt-5",
         input=[
             {
                 "role": "system",
@@ -173,7 +168,7 @@ Facts:
 """.strip()
 
     with client.responses.stream(
-        model="gpt-5-mini",
+        model="gpt-5",
         input=prompt,
         reasoning={"effort": "minimal"},
         max_output_tokens=160, #limiting the model for UX and avoid hallucinations and be token efficient
@@ -209,7 +204,7 @@ def render_med_info_stream(lang: str, med: dict, match_info: dict | None) -> Ite
         match_type = match_info.get("match_type") or ""
         # Keep it purely factual: "user input matched alias"
         facts_lines.append(
-            f'User input was: "{alias}" and it matched an alias for "{med["display_name"]}"'
+            f'User input was: "{alias}", let him know he sees {med["display_name"]} abecause it matched an alias"'
             # + (f' (match_type={match_type}).' if match_type else ".")
         )
 
@@ -303,7 +298,7 @@ def render_stock_check_stream(lang: str, med: dict, branch: dict, stock_status: 
     if match_info and match_info.get("matched_kind") == "alias":
         alias = match_info.get("matched_value") or match_info.get("input") or ""
         facts_lines.append(
-            f'User input was: "{alias}" and it matched an alias for "{med["display_name"]}"'
+            f'User input was: "{alias}", let him know he sees {med["display_name"]} abecause it matched an alias"'
         )
 
     facts = "\n".join(facts_lines)
@@ -329,7 +324,6 @@ def render_ambiguous_branch_stream(lang: str, options: list[str]) -> Iterator[st
 
  #simple - can be replaced by the LLM - based render_text_stream
 def render_branch_not_found_stream(lang: str) -> Iterator[str]:
-    print("render_branch_not_found_stream") #TODO: delete
     if lang == "he":
         yield "לצערי לא מצאתי את הסניף הזה אולי אין לנו סניף במקום המדובר או שישנה טעות באיות. אפשר לכתוב עיר/סניף כמו: תל אביב / ירושלים / חיפה."
     else:
@@ -341,7 +335,7 @@ def render_branch_not_found_stream(lang: str) -> Iterator[str]:
  #simple - can be replaced by the LLM - based render_text_stream
 def render_ask_rx_or_user_stream(lang: str) -> Iterator[str]:
     if lang == "he":
-        yield "כדי לבדוק מרשם, כתבי מזהה מרשם (למשל RX-10001) או מזהה משתמש (למשל user_009)." #TODO: CHECK
+        yield "כדי לבדוק מרשם, כתבי מזהה מרשם (למשל RX-10001) או מזהה משתמש (למשל user_009)." 
     else:
         yield "To check prescriptions, provide a prescription ID (e.g., RX-10001) or a user ID (e.g., user_009)."
 

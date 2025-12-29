@@ -7,7 +7,7 @@ app = FastAPI() #creating the web-app instance (the object that uvicorn runs)
 
 # with streaming enabled
 @app.post("/chat/stream")
-def chat_stream(input: dict): #POTENTIALY: TODO: ater replace with pydantic model
+def chat_stream(input: dict):
     message = input.get("message", "")
 
     def event_generator():
@@ -19,7 +19,7 @@ def chat_stream(input: dict): #POTENTIALY: TODO: ater replace with pydantic mode
 
 # no streaming if needed
 @app.post("/chat")
-def chat(input: dict): #POTENTIALY: TODO: ater replace with pydantic model
+def chat(input: dict):
     message = input.get("message", "") # avoid crashes if no message using the get 
     answer = qury_llm(message)
     return {

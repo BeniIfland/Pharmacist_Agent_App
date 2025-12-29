@@ -48,7 +48,7 @@ def is_smalltalk_or_meta(text: str) -> bool:
 def _looks_like_short_answer(text: str) -> bool:
     # when awaiting a slot, answers are usually short
     t = (text or "").strip()
-    return 0 < len(t) <= 15 and ("\n" not in t) #TODO: can try different lengths
+    return 0 < len(t) <= 15 and ("\n" not in t) 
 
 def plausible_med_name(text: str) -> bool:
     """
