@@ -87,15 +87,6 @@ def respond(message, history, flow_state,trace_state):
         # Yield chat, textbox, flow_state, trace markdown
         yield ui_history, "", last_flow, trace_md
         
-# def _to_jsonable_tool_calls(tool_calls):
-#     out = []
-#     for tc in tool_calls or []:
-#         if hasattr(tc, "model_dump"):
-#             out.append(tc.model_dump())
-#         else:
-#             out.append(tc)
-#     return out
-
 
 #TODO: Add stop button / cancel  & Add safety gating mid-stream
 
@@ -109,6 +100,7 @@ def build_ui():
         with gr.Row(): 
              #chat interface
             with gr.Column(scale=3):
+                gr.Markdown("### I can help with factual information about medications we have in our system, inventory or user prescriptions, ready when you are...")
                 chatbot = gr.Chatbot(height=350) ##chat component
                 msg = gr.Textbox(placeholder="Type a message...", label="Message")
                 send = gr.Button("Send")
@@ -116,7 +108,7 @@ def build_ui():
                 # msg.submit(respond, inputs=[msg, chatbot, flow_state], outputs=[chatbot, msg, flow_state])
             #trace tools and state interface
             with gr.Column(scale=2):
-                gr.Markdown("Agent Tracing:")
+                gr.Markdown("## Agent Tracing:")
                 trace_panel = gr.Markdown(value="_Waiting for input…_")
         
         send.click(respond,inputs=[msg, chatbot, flow_state, trace_state],outputs=[chatbot, msg, flow_state, trace_panel],)
@@ -126,14 +118,14 @@ def build_ui():
 
 def trace_markdown(tool_calls) -> str:
     """
-    Turn tool\ internal function calls into a clean per-turn execution timeline (Markdown).
+    Turn tool or internal function calls into a clean per-turn execution timeline (Markdown).
     Shows each step once + a short description.
     """
     if not tool_calls:
         return "_Waiting for input…_"
 
     seen = set()
-    lines = []
+    lines = ["**Execution timeline**\n"]
     for tc in tool_calls:
         name = getattr(tc, "name", None) or (tc.get("name") if isinstance(tc, dict) else str(tc))
         if not name or name in seen:
@@ -142,20 +134,24 @@ def trace_markdown(tool_calls) -> str:
         desc = TRACE_LABELS.get(name, "")
         # show name + description (name helps debugging, description helps reviewer)
         if desc:
-            lines.append(f"- ✓ **{name}** — {desc}")
+            lines.append(f"✓ **{name}** — {desc}")
         else:
-            lines.append(f"- ✓ **{name}**")
+            lines.append(f"✓ **{name}**")
 
     return "\n".join(lines) if lines else "_Waiting for input…_"
 
 
-
-
-
+# a bit of design
+theme = gr.themes.Soft(
+        primary_hue="teal",
+        secondary_hue="slate",
+        neutral_hue="slate",
+        radius_size="lg",
+        font=[gr.themes.GoogleFont("Inter"), "ui-sans-serif", "system-ui"],)
 
 
 
 if __name__ == "__main__":
-    build_ui().launch(server_name="0.0.0.0", server_port=7860)
+    build_ui().launch(theme = theme,server_name="0.0.0.0", server_port=7860)
 
 
