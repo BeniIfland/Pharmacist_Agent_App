@@ -51,11 +51,7 @@ def _route_or_continue_flow(
     intent_result: Optional[IntentResult] = None
 
     if flow and flow.name and not flow.done:
-        tool_calls.append(
-            ToolCallRecord(
-                name="route_decision",
-                args={"reason": "continue_active_flow", "flow": flow.name, "step": flow.step},
-                result={"action": "continue"},))
+        # tool_calls.append(ToolCallRecord(name="active_flow_continuation",args={"reason": "continue_active_flow", "flow": flow.name, "step": flow.step},result={"action": "continue"},))
         print(f"[DBG] continuing active flow: {flow.name} step={flow.step}") #TODO: delete debug
         return flow, None, lang_heuristic
 
@@ -94,13 +90,7 @@ def run_small_talk_flow(
     - mark flow done
     - return
     """
-    tool_calls.append(
-        ToolCallRecord(
-            name="render_small_talk",
-            args={"lang": lang},
-            result={"note": "streamed"},
-        )
-    )
+    tool_calls.append(ToolCallRecord(name="render_small_talk",args={"lang": lang},result={"note": "streamed"},))
 
     assistant.content = ""
     yield from _yield_stream(
@@ -108,8 +98,7 @@ def run_small_talk_flow(
         assistant=assistant,
         history=history,
         flow=flow,
-        tool_calls=tool_calls,
-    )
+        tool_calls=tool_calls,)
 
     _finalize_flow(flow)
     # CRITICAL: send updated flow state to client
@@ -141,10 +130,7 @@ def run_med_info_flow(
         awaiting = flow.slots.get("_awaiting")  # may be "med_name" or None
         extracted = extract_med_name(user_text)
         tool_calls.append(
-            ToolCallRecord(
-                name="extract_med_name",
-                args={"text": user_text},
-                result={"extracted": extracted},))
+            ToolCallRecord(name="extract_med_name",args={"text": user_text},result={"extracted": extracted},))
         
         candidate = extracted.strip() if extracted else None #Only accept raw user_text as candidate if we explicitly asked for a med name
         if not candidate and awaiting == "med_name": #if no med in the message (but we are in the flow #TODO: think if we ended up in the flow mistakenly
@@ -225,7 +211,7 @@ def run_med_info_flow(
             tool_calls=tool_calls,)
         return
 
-    # Last-resort fallback (unchanged behavior)
+    # Last-resort fallback 
     assistant.content = ""
     yield from _yield_stream(
         stream=render_small_talk_stream(lang, req.message),
@@ -443,10 +429,7 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
     reason = should_escape_flow(flow, req.message)
     if reason:
         print(f"Escaping flow because: {reason}") #TODO: delete debugging
-        tool_calls.append(ToolCallRecord(
-            name="flow_escape",
-            args={"flow": flow.name, "text": req.message},
-            result={"action": "reset_and_reroute", "reason": reason},))
+        # tool_calls.append(ToolCallRecord( name="flow_escape", args={"flow": flow.name, "text": req.message}, result={"action": "reset_and_reroute", "reason": reason},))
         flow = FlowState()  # reset so router will route and not continue the current flow
     # IMPORTANT: now proceed to normal routing (LLM intent detector)
 
@@ -481,7 +464,7 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
         return
 
     
-    # Default fallback (kept identical to your last-resort behavior)
+    # Last-resort fallback
     assistant.content = ""
     yield from _yield_stream(
         stream=render_small_talk_stream(lang, req.message),
