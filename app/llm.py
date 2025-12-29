@@ -40,7 +40,7 @@ def detect_intent_llm(text: str) -> IntentResult:
             "- lang must be 'he' if the user wrote in Hebrew letters, else 'en'.\n\n"
             "JSON schema:\n"
             "{\n"
-            '  "intent": "med_info|small_talk",\n'
+            '  "intent": "med_info|small_talk|rx_verify|stock_check",\n'
             '  "confidence": <a float [0,1] that express your confidence in the decision>,\n' #debugging,evaluation,future fuardrail
             '  "lang": "he|en",\n'
             '  "notes": <a short description on why you chose this intent>\n' #debugging and evaluation
@@ -184,7 +184,7 @@ Facts:
 
 #med_info renderers
 
-def render_med_info_stream(lang: str, med: dict) -> Iterator[str]:
+def render_med_info_stream(lang: str, med: dict, match_info: dict | None) -> Iterator[str]:
     """
     Renders medicine info facts
     
@@ -196,10 +196,24 @@ def render_med_info_stream(lang: str, med: dict) -> Iterator[str]:
     :rtype: Iterator[str]
     """
     instruction = "Present factual medication information and a brief safety note."
-    facts = f"""Name: {med["display_name"]}
-        Active ingredient: {med["active_ingredient"]}
-        Prescription required: {med["rx_required"]}
-        Summary: {med["label_summary"]}"""
+    facts_lines = [
+        f'Name (Official): {med["display_name"]}',
+        f'Active ingredient: {med["active_ingredient"]}',
+        f'Prescription required: {med["rx_required"]}',
+        f'Summary: {med["label_summary"]}',
+    ]
+
+    # Adding alias clarification only if tool told us it was an alias hit
+    if match_info and match_info.get("matched_kind") == "alias":
+        alias = match_info.get("matched_value") or match_info.get("input") or ""
+        match_type = match_info.get("match_type") or ""
+        # Keep it purely factual: "user input matched alias"
+        facts_lines.append(
+            f'User input was: "{alias}" and it matched an alias for "{med["display_name"]}"'
+            # + (f' (match_type={match_type}).' if match_type else ".")
+        )
+
+    facts = "\n".join(facts_lines)
     return render_text_stream(lang, instruction, facts)
 
 
@@ -228,8 +242,7 @@ def render_not_found_stream(lang: str) -> Iterator[str]:
     :return: streamed text iterator
     :rtype: Iterator[str]
     """
-    # instruction = "Ask the user to make sure he mentioned the "
-    instruction = "Inform the user that you couldn't find the medication bceause of misspelling or it doesn't exist in the system, ask fr a different name or spelling."
+    instruction = "Inform the user that you couldn't find the medication bceause of misspelling or it doesn't exist in the system, ask for a different name or spelling."
     facts = "no medication found"
     return render_text_stream(lang, instruction, facts)
 
@@ -251,15 +264,14 @@ def render_ask_med_name_stream(lang: str) -> Iterator[str]:
 def render_small_talk_stream(lang: str, user_text: str):
     instruction = (
         "You are a Pharmacist Assistant, respond politely to small talk and greeting."
-        "You may greet, thank, and explain your capabilities. "
-        "Do NOT provide medical advice, diagnosis, or recommendations."
-        "And you are NOT allowed to talk about inventory, ot prescriptions."
-    )
+        "You should greet, thank, and MAY BUT NOT HAVE TO explain your capabilities. "
+        "DO NOT provide medical advice, diagnosis, or recommendations."
+        "And you are NOT allowed to talk about inventory, ot prescriptions.")
     facts = (
         f"User said: {user_text}\n"
-        "Capabilities: factual medication info, availability, prescription requirement.\n"
-        "If user asks for personal guidance: suggest consulting a pharmacist/doctor."
-    )
+        # "Capabilities: factual medication info, availability, prescription requirement.\n"
+        # "If user asks for personal guidance: suggest consulting a pharmacist/doctor."
+        )
     return render_text_stream(lang, instruction, facts)
 
 def render_refusal_stream(lang: str, user_text: str):
@@ -273,7 +285,7 @@ def render_refusal_stream(lang: str, user_text: str):
 
 #stock_check renderers:
 
-def render_stock_check_stream(lang: str, med: dict, branch: dict, stock_status: str):
+def render_stock_check_stream(lang: str, med: dict, branch: dict, stock_status: str, match_info: dict | None):
     # med is Medication dict from tool_result["medication"]
     # branch is {"branch_id":..., "display_name":...} from get_branch_by_name
     instructions = (
@@ -283,11 +295,18 @@ def render_stock_check_stream(lang: str, med: dict, branch: dict, stock_status: 
         "Point out that availability may change and offer additional help.\n"
         "NEVER offer additional help\n"
         "Keep it short.\n")
-    facts = (
-        f"Medication: {med['display_name']} (active ingredient: {med['active_ingredient']}).\n"
-        f"Branch: {branch['display_name']}.\n"
-        f"Stock status: {stock_status}.\n")
-    
+    facts_lines = [
+        f'Branch: {branch["display_name"]}',
+        f'Medication (canonical): {med["display_name"]}',
+        f'Stock status: {stock_status}',]
+
+    if match_info and match_info.get("matched_kind") == "alias":
+        alias = match_info.get("matched_value") or match_info.get("input") or ""
+        facts_lines.append(
+            f'User input was: "{alias}" and it matched an alias for "{med["display_name"]}"'
+        )
+
+    facts = "\n".join(facts_lines)
     return render_text_stream(lang, instructions, facts)  
 
 

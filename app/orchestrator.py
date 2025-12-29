@@ -160,11 +160,12 @@ def run_med_info_flow(
 
         if tool_result["status"] == "OK":
             med = tool_result["medication"]
+            match_info = tool_result.get("match_info")
             flow.slots.pop("_awaiting", None) #waiting resolved
             
             assistant.content = ""
             yield from _yield_stream(
-                stream=render_med_info_stream(lang, med),
+                stream=render_med_info_stream(lang, med, match_info = match_info),
                 assistant=assistant,
                 history=history,
                 flow=flow,
@@ -328,6 +329,7 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
             return
 
         flow.slots["med"] = med_res["medication"]  
+        flow.slots["med_match_info"] = med_res.get("match_info")
         flow.step = "resolve_branch"
 
     # Step: resolve_branch 
@@ -374,7 +376,8 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
         stock_status = stock_res.get("stock_status", "UNKNOWN")
 
         assistant.content = ""
-        for delta in render_stock_check_stream(lang, med, branch, stock_status):
+        match_info = flow.slots.get("med_match_info")
+        for delta in render_stock_check_stream(lang, med, branch, stock_status, match_info=match_info):
             assistant.content += delta
             yield delta, ChatResponse(answer=assistant.content, history=history, flow=flow, tool_calls=tool_calls)
 

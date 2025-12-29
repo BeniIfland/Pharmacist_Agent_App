@@ -93,45 +93,65 @@ def get_medication_by_name(name: str) -> Dict[str, Any]:
     """
     q = _norm(name)
     if not q:
-        return {"status": "NOT_FOUND", "matches": [], "medication": None} #TODO: this fallback means name was None think if this is the fallback I want - mayabe add a NONE error or something
+        return {"status": "NOT_FOUND", "matches": [], "medication": None} 
 
-    matches: List[Medication] = []
-    for m in MEDICATIONS: # first check for an exact normalized match 
-        candidates = [m.display_name] + m.aliases
-        if any(_norm(c) == q for c in candidates):
-            matches.append(m)
+    # store tuples: (Medication, matched_value, matched_kind, match_type)
+    hits: List[tuple[Medication, str, str, str]] = []
+
     
-    # Optional
-    # fallback: also allow partial contains - to address typos
-    # but only compare substrings if no exact match to avoid FPs
-    if not matches:
+   # 1) exact normalized match
+    for m in MEDICATIONS:
+        candidates = [(m.display_name, "canonical")] + [(a, "alias") for a in m.aliases]
+        for val, kind in candidates:
+            if _norm(val) == q:
+                hits.append((m, val, kind, "exact"))
+                break  # stop at first match for this med
+    
+     # 2) contains match only if no exact matches
+    if not hits:
         for m in MEDICATIONS:
-            candidates = [m.display_name] + m.aliases
-            if any(q in _norm(c) for c in candidates):
-                matches.append(m)
+            candidates = [(m.display_name, "canonical")] + [(a, "alias") for a in m.aliases]
+            for val, kind in candidates:
+                if q in _norm(val):
+                    hits.append((m, val, kind, "contains"))
+                    break
 
-    if not matches:
+    if not hits:
         return {"status": "NOT_FOUND", "matches": [], "medication": None}
+
+    # de-dupe meds while preserving first match info
+    by_id: Dict[str, tuple[Medication, str, str, str]] = {}
+    for m, val, kind, mtype in hits:
+        if m.med_id not in by_id:
+            by_id[m.med_id] = (m, val, kind, mtype)
+
 
     # Fallback: in case identified multiple meds e.g. because the user inserted an abbreviation which fits two meds
     # Important for multistep-flow in which the agent clarifies ambiguity with the user intended and avoids LLM inference and potential hallucination
-    if len(matches) > 1:
+    if len(by_id) > 1:
         return {
             "status": "AMBIGUOUS",
-            "matches": [{"med_id": m.med_id, "display_name": m.display_name} for m in matches],
-            "medication": None,
-        }
+            "matches": [{"med_id": m.med_id, "display_name": m.display_name} for (m, _, _, _) in by_id.values()],
+            "medication": None,}
+    
     # In case there's a single match
-    m = matches[0]
+    m, matched_value, matched_kind, match_type = next(iter(by_id.values()))
     return {
         "status": "OK",
-        "matches": [], #no more than 1 match hence the list can be empty
+        "matches": [],
         "medication": {
             "med_id": m.med_id,
             "display_name": m.display_name,
             "active_ingredient": m.active_ingredient,
             "rx_required": m.rx_required,
             "label_summary": m.label_summary,
+        },
+        "match_info": {
+            "input": (name or ""),
+            "normalized": q,
+            "matched_value": matched_value,
+            "matched_kind": matched_kind,   # "alias" or "canonical"
+            "match_type": match_type,       # "exact" or "contains"
         },
     }
 
