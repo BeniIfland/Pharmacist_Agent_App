@@ -56,7 +56,7 @@ docker run --rm -p 7860:7860 -e OPENAI_API_KEY="sk-..." pharmacist-agent
 
 ### User journeys demonstration and evaluation plan
 
-- Evidence screenshots are provided in [Evidence Screenshots](evidence_screenshots.md).
+- Evidence screenshots are provided in [Evidence Screenshots](evidence_screenshots).
 
 - Demo journeys and user inputs with expected behavior are depicted in [Demo Journeys](demo_inputs.md).
 
