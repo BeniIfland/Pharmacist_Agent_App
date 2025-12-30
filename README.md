@@ -22,11 +22,14 @@ The project demonstrates the combination of LLM routing and verbalization with d
 All flows include intermediate clarification steps for missing or ambigous information and re-routing based on user intents.
 1. **Med info flow:** collects a medication name from the user, performs a deterministic lookup in the
     synthetic DB, and streams back factual medication label information.
+
     Flow steps: extract_med_name → lookup → reply 
 2. **Stock check flow:** collects a medication name and a branch name, resolves each to a canonical record
     via deterministic lookup tools, and queries branch stock status for that medication.
+
 Flow steps: collect → resolve_med → resolve_branch → stock → reply
 3. **Prescription verification flow:** verify a single prescription by rx_id *or* list prescriptions for a user by user_id.
+
 Flow steps: collect → verify_rx OR list_user_rx → reply
 4. **Small talk fallback flow:** all other behavior except from the flows mentioned above is redirected to a safety restricted small talk contextual responses.
 ---

@@ -2,7 +2,6 @@ from typing import Iterator, Tuple, Optional
 from typing import Iterator, Tuple
 from app.schemas import ChatRequest, ChatResponse, ChatMessage, FlowState, ToolCallRecord
 from app.llm import extract_med_name,render_user_rx_list_stream
-# from app.flows import start_med_info_flow,start_stock_check_flow
 from app.tools import get_medication_by_name, get_stock,verify_prescription,get_prescriptions_for_user
 from app.simple_detectors import detect_lang,extract_branch_name,extract_user_id,extract_rx_id
 from app.llm import extract_med_name, render_med_info_stream, render_ambiguous_stream, render_not_found_stream, render_ask_med_name_stream,render_rx_verify_stream,render_user_not_found_stream
@@ -460,8 +459,6 @@ def run_stock_check_flow(*, req: ChatRequest, flow: FlowState, lang: str, assist
         # Ask for what’s missing (minimal)
         missing_med = not flow.slots.get("med_name")
         missing_branch = not flow.slots.get("branch_name")
-        # print(f"missing_med:{missing_med} missing_branch:{missing_branch}") 
-        # print(f"flow slots: med: {flow.slots.get("med_name","____")}, branch: {flow.slots.get("branch_name","____")}")
         if missing_med and missing_branch:
             flow.slots["_awaiting"] = "med_name" # safety mechanism 
             assistant.content = ""
@@ -633,7 +630,7 @@ def handle_turn(req: ChatRequest) -> Iterator[Tuple[str, ChatResponse]]:
         flow = FlowState()  # reset so router will route and not continue the current flow
 
     # IMPORTANT: now proceed to normal routing (LLM intent detector)
-    # --- Route / Continue flow 
+    # Route / Continue flow 
     flow, intent_result, st_lang = _route_or_continue_flow(req=req,flow=flow,lang_heuristic=lang,tool_calls=tool_calls,)
 
     # print(f"[DBG] flow={flow.name} step={flow.step} lang={lang} intent={getattr(intent_result,'intent',None)}") 

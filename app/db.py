@@ -145,7 +145,7 @@ PRESCRIPTIONS: List[Prescription] = [
     Prescription(rx_id="RX-10006", user_id="user_010", med_id="med_005", status="EXPIRED", expires_on=date(2025, 1, 1)),
 ]
 
-#TODO: check if I ever use them
+
 
 BRANCH_BY_ID: Dict[str, Branch] = {b.branch_id: b for b in BRANCHES}
 RX_BY_ID: Dict[str, Prescription] = {p.rx_id.upper(): p for p in PRESCRIPTIONS}
