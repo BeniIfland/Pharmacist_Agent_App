@@ -28,11 +28,11 @@ All flows include intermediate clarification steps for missing or ambiguous info
 2. **Stock check flow:** collects a medication name and a branch name, resolves each to a canonical record
     via deterministic lookup tools, and queries branch stock status for that medication.
 
-Flow steps: collect → resolve_med → resolve_branch → stock → reply
+    Flow steps: collect → resolve_med → resolve_branch → stock → reply
 
 3. **Prescription verification flow:** verify a single prescription by rx_id *or* list prescriptions for a user by user_id.
 
-Flow steps: collect → verify_rx OR list_user_rx → reply
+    Flow steps: collect → verify_rx OR list_user_rx → reply
 
 4. **Small talk fallback flow:** all other behavior except from the flows mentioned above is redirected to a safety restricted small talk contextual responses.
 ---
