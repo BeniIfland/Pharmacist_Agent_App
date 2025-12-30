@@ -2,14 +2,14 @@
 
 ## Evaluation Purpose
 
-The goal of this evaluation is to verify that the agentic assitant app bahaves in a correct, safe and predictable manner.
+The goal of this evaluation is to verify that the agentic assistant app bahaves in a correct, safe and predictable manner.
 The evaluation was focused on: 
 - Correct execution of multi-step conversational flows with predictable tool calls
 - Proper enforcement of safety constraints (no medical advice)
 - Robust handling of incomplete, ambiguous, or changing user inputs
 - Clear separation between deterministic tool logic and LLM-based phrasing and decisision making 
 
-This evaluation is qualitative and behavior-based, reflecting how the agent would be tested as a POC or internal review rather than large-scale production deployment.
+This evaluation is qualitative and behavior-based, reflecting how the agent would be tested as a POC or internal review rather than large-scale production deployment, however a small section in the end is dedicated to such evaluation.
 
 ---
 ## Methodology
@@ -20,9 +20,9 @@ The evaluation process consisted of:
 - Executing predefined conversation scripts (see [Demo Journeys](demo_inputs.md)).
 - Observing the agent’s responses, follow-up questions, and flow progression.
 - Verifying that the correct tools and flows were triggered using the tracing panel.
-- Capturing screenshots as evidence of correct behavior.
 - Deviating from the scripts with unexpected inputs.
 - Observing behavior and iteratively refining its responses and re-evaluating.
+- Capturing screenshots as evidence of correct behavior.
 
 All evaluations were performed with the agent running in a stateless configuration, with no server-side memory.
 
@@ -50,8 +50,8 @@ Safety was evaluated by testing inputs that request:
 
 Expected behavior:
 - A deterministic safety gate overrides all other flows to ensure safety
-- A prompt safety restrictions in case the sagery gate fails 
-- The agent provides a refusal with a neutral, factual redirection
+- A prompt safety restrictions in case the safety gate fails 
+- The agent provides a refusal with a neutral redirection
 - The agent does not continue or resume the original flow after refusal
 
 This ensures compliance with the constraint that the agent provides factual information only and does not act as a medical advisor.
@@ -63,7 +63,7 @@ Robustness was evaluated by testing non-ideal user behavior, including:
 - Changing topics mid-flow
 - Providing irrelevant responses when a slot is requested
 - Canceling an ongoing interaction
-- Responding with small talk instead of requested information
+- Responding with small talk instead of requested medical advices
 
 Expected behavior:
 - The agent does not get stuck in a flow
@@ -103,16 +103,16 @@ The following screenshots provide evidence of the evaluation:
 - **Screenshot 1:** 
   [Medication information flow with small talk start](evidence_screenshots/med_not_found_and_change.png).
 
-  Demonstrates correct intent detection, small talk reply, re-routing, clarification question, entity extraction, tool grounding, and response rendering.
+  Demonstrates correct intent detection, small talk reply, re-routing, clarification, entity extraction, tool call, and response rendering.
 
-- **Screenshot 2:**  [Stock availability flow with missing slot and meical advice request](evidence_screenshots/stock_availiability_and_advice_refusal.png).
+- **Screenshot 2:**  [Stock availability flow with missing slot and medical advice request](evidence_screenshots/stock_availiability_and_advice_refusal.png).
 
   Demonstrates multi-step slot collection, flow continuation and flow safety cacelation.
 
 - **Screenshot 3:** 
   [Prescription information flow with language change small talk](evidence_screenshots/rx_small_talk_lang_change.png).
 
-  Demonstrates correct intent detection, multi-step flow collection, response rendering and adaptive language change.
+  Demonstrates correct intent detection, multi-step info collection, response rendering and adaptive language change.
 
 
 
@@ -124,7 +124,7 @@ Before real-world deployment, additional evaluation would be required, including
 - Automated testing of edge cases and adversarial prompts
 - Intent detection accuracy
 - Database lookup accuracy and F1 to minimize false positive and false negative matches
-- Safety gate refusal rates with ambigous inputs
+- Safety gate refusal rates with ambiguous inputs
 - Auditing of hallucination risks
 - User experience testing with non-technical users
 - Load and latency testing under concurrent usage
