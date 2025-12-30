@@ -1,6 +1,6 @@
 # AI-powered pharmacist assistant App by Beni Ifland Repository
 
-An LLM-based bilingual AI assitant for a retail pharmacy chain that is capable of providing factual information about medications, stock availability, prescriptions etc, based on data from the pharmacy's internal systems (synthetic database in this case).
+An LLM-based bilingual AI assistant for a retail pharmacy chain that is capable of providing factual information about medications, stock availability, prescriptions etc, based on data from the pharmacy's internal systems (synthetic database in this case).
 The agent complies with strict restrictions not to provide medical advice and has corresponding safety mechanisms.
 
 The project demonstrates the combination of LLM routing and verbalization with deterministic flows and tools (e.g. database lookups), which creates user-safe multi-step assistance flows. The agent is stateless meaning the server keeps no session memory, and the client (UI) sends the flow's state on each request and receives updated flow states back. Implemented using OpenAI API without dedicated agentic framework.
@@ -58,7 +58,7 @@ docker run --rm -p 7860:7860 -e OPENAI_API_KEY="sk-..." pharmacist-agent
 
 - Evidence screenshots are provided in [Evidence Screenshots](evidence_screenshots).
 
-- Demo journeys and user inputs with expected behavior are depicted in [Demo Journeys](demo_inputs.md).
+- Demo multi-step flows and user inputs with expected behavior are depicted in [Demo Journeys](demo_inputs.md).
 
 - Evaluation plan is described in [Evaluation Plan](evaluation_plan.md).
 
