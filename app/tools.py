@@ -45,8 +45,8 @@ def get_medication_by_name(name: str) -> Dict[str, Any]:
         name or known aliases. The lookup supports normalization, exact and
         partial matching, and explicit ambiguity handling. This tool is
         designed to ground agent responses in factual data, avoid
-        hallucinations, and transparently expose *how* a medication was
-        matched (e.g., via alias vs. canonical name).
+        hallucinations, and explain how a medication was
+        matched in case it was using an alias.
 
     Parameters:
         name (str):
@@ -112,8 +112,7 @@ def get_medication_by_name(name: str) -> Dict[str, Any]:
         - OK:
             The returned medication record and match_info may be used
             directly by the calling flow to present factual information and
-            to explain how the medication was identified (e.g., matched via
-            alias).
+            to explain how the medication was identified (e.g., via alias).
         - AMBIGUOUS:
             The calling flow should ask the user to clarify which medication
             they intended, using the returned matches, without relying on
@@ -278,7 +277,7 @@ def get_stock(branch_id: str, med_id: str) -> dict:
     pharmacy branch using a deterministic lookup.
 
     Purpose:
-        Perform a factual, non-probabilistic stock check by querying the
+        Perform a factual, stock check by querying the
         synthetic inventory map with a (branch_id, med_id) key. This tool
         allows the agent to report medication availability grounded in
         predefined data and prevents speculative or hallucinated answers

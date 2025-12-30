@@ -292,8 +292,7 @@ def run_med_info_flow(*,req: ChatRequest,flow: FlowState,lang: str,assistant: Ch
         assistant=assistant,
         history=history,
         flow=flow,
-        tool_calls=tool_calls,
-    )
+        tool_calls=tool_calls,)
     return
 
 

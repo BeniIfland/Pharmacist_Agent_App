@@ -18,6 +18,36 @@ The project demonstrates the combination of LLM routing and verbalization with d
 - Simple and aesthetic user interface implemented with Gradio.
 
 ---
+### Multi-step flows:
+All flows include intermediate clarification steps for missing or ambigous information and re-routing based on user intents.
+1. **Med info flow:** collects a medication name from the user, performs a deterministic lookup in the
+    synthetic DB, and streams back factual medication label information.
+    Flow steps: extract_med_name → lookup → reply 
+2. **Stock check flow:** collects a medication name and a branch name, resolves each to a canonical record
+    via deterministic lookup tools, and queries branch stock status for that medication.
+Flow steps: collect → resolve_med → resolve_branch → stock → reply
+3. **Prescription verification flow:** verify a single prescription by rx_id *or* list prescriptions for a user by user_id.
+Flow steps: collect → verify_rx OR list_user_rx → reply
+4. **Small talk fallback flow:** all other behavior except from the flows mentioned above is redirected to a safety restricted small talk contextual responses.
+---
+
+### Agent tools:
+
+1. `get_medication_by_name` - Resolves a user-provided medication name to a single medication record
+    from the synthetic database, with explicit match metadata.
+2. `get_branch_by_name` - Resolves a user-provided pharmacy branch name to a single branch record
+    from the synthetic database.
+3. `get_stock` - Resolves the stock availability of a specific medication at a specific
+    pharmacy branch using a deterministic lookup.
+4. `verify_prescription` - Resolves and validates a prescription record using a deterministic lookup.
+
+5. `get_prescriptions_for_user` - Resolves and list all prescriptions associated with a specific user ID
+    using a deterministic lookup while also validating perscription validity.
+
+6. `detect_intent_llm` - Classify the user's latest message into a single supported intent using
+    an LLM-based router, returning a strict JSON.
+
+---
 ### Project Architecture
 - orchestrator.py - stateless routing of user messages and managing multi-step flows
 - llm.py - llm verbalization and streaming, and policy message rendering

@@ -1,7 +1,7 @@
-# demo_inputs.md — Pharmacist Assistant Agent Demo Journeys
+# Pharmacist Assistant Agent Demo Journeys
 ---
-
-## Journey 1 — Medication info (Happy and sucessfull path)
+The following user hourneys depict the implemnted multi-step flows with different variations such as: missing required information, language change, medical-advice, re-routing etc.
+## Journey 1: Medication info (Happy and sucessfull path)
 **Input (English):**  
 Tell me about Advil please
 
@@ -12,7 +12,7 @@ Tell me about Advil please
 
 ---
 
-## Journey 2 — Medication info (Medication not mentioned and recovery)
+## Journey 2: Medication info (Medication not mentioned and recovery)
 **Input (English):**  
 Tell me about Xyzzq
 
@@ -29,7 +29,7 @@ Tell me about Xyzzq
 - Tracing panel should include: extract_med_name → get_medication_by_name 
 
 ---
-## Journey 3 — Medication info (medication wasn't mentioned not found and recovery)
+## Journey 3: Medication info (medication wasn't mentioned not found and recovery)
 **Input (Hebrew):**  
 אשמח לקבל מידע על תרופה
 
@@ -54,7 +54,7 @@ Tell me about Xyzzq
 - Tracing panel should include: detect_intent → extract_med_name  → get_medication_by_name
 ---
 
-## Journey 4 — Stock check (happy path: med + branch)
+## Journey 4: Stock check (happy path: med + branch)
 **Input (English):**  
 Do you have Nurofen in stock in Tel Aviv?
 
@@ -65,7 +65,7 @@ Do you have Nurofen in stock in Tel Aviv?
 
 ---
 
-## Journey 5 — Stock check (missing slot collection)
+## Journey 5: Stock check (missing slot collection)
 **Input (English):**  
 Is Omeprazole available?
 
@@ -83,7 +83,7 @@ Jerusalem
 - Tracing panel: extract_branch_name → get_medication_by_name → get_branch_by_name → get_stock 
 ---
 
-## Journey 6 — New-topic switching (escape mechanism)
+## Journey 6: New-topic switching (escape mechanism)
 **Input (Hebrew):**  
 האם ישנה זמינות לפרצטמול?
 
@@ -100,7 +100,7 @@ Jerusalem
 
 ---
 
-## Journey 7 — Safety medical advice refusal overrides everything
+## Journey 7: Safety medical advice refusal overrides everything
 **Input (English):**  
 I would love to get availability info in Tel Aviv
 
@@ -117,7 +117,7 @@ I have a migraine, what should I take?
 - Tracing panel: safety_gate 
 
 ---
-## Journey 8 — Prescription info (Happy path 1 verify prescription)
+## Journey 8: Prescription info (Happy path 1 verify prescription)
 **Input (Hebrew):**  
 RX-10001 אשמח לקבל מידע על המרשם שלי 
 
@@ -126,7 +126,7 @@ RX-10001 אשמח לקבל מידע על המרשם שלי
 - Tracing panel: detect_intent → extract_rx_id → extract_user_id → verify_prescription 
 
 ---
-## Journey 9 — Prescription info (Happy path 2 get all prescriptions of a user)
+## Journey 9: Prescription info (Happy path 2 get all prescriptions of a user)
 **Input (English):**  
 Present all my prescription user_010
 
@@ -136,7 +136,7 @@ Present all my prescription user_010
 
 ---
 
-## Journey 10 — Prescription info (missing ID)
+## Journey 10: Prescription info (missing ID)
 **Input (English):**  
 I would love to get info regarding my prescription
 

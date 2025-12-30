@@ -23,6 +23,88 @@ def _extract_json_object(text: str) -> str:
 
 
 def detect_intent_llm(text: str) -> IntentResult:
+    """
+    Tool Name: detect_intent_llm
+    Classify the user's latest message into a single supported intent using
+    an LLM-based router, returning a strict JSON payload validated by Pydantic.
+
+    Purpose:
+        Route each user turn to the correct multi-step flow in the Pharmacist
+        Assistant application. This function uses an LLM (non-deterministic)
+        to interpret the user's message and choose exactly one intent from a
+        fixed set, while also returning a language tag, a confidence score,
+        and short routing notes for debugging and evaluation.
+
+    Parameters:
+        text (str):
+            The user's latest message. This function sends the raw message
+            to the LLM router prompt. The router is instructed to infer:
+            - intent: one of the supported flow labels
+            - lang: 'he' if Hebrew letters are detected, otherwise 'en'
+            - confidence: float in [0,1]
+            - notes: brief rationale for observability/debugging
+
+    Returns:
+        IntentResult:
+            A Pydantic-validated object produced from the model’s JSON output.
+            Expected fields:
+            - intent (Literal["med_info", "stock_check", "rx_verify", "small_talk"]):
+                The selected intent for the user message.
+            - confidence (float):
+                A number in [0,1] indicating router confidence (used for
+                debugging/evaluation and potential future guardrails).
+            - lang (Literal["he", "en"]):
+                'he' when the user wrote in Hebrew letters, else 'en'.
+            - notes (str):
+                A short explanation of why the router selected this intent.
+
+    Allowed Intents (Routing Contract):
+        - med_info:
+            User asks about a specific medication or medication information
+            such as dosage, usage instructions, prescription requirement, or
+            active ingredients. The router should avoid misclassifying
+            general medical advice requests as med_info when they are not
+            about a specific medicine.
+        - stock_check:
+            User asks if a medication is available / in stock at a
+            branch/city/store.
+        - rx_verify:
+            User asks to verify a prescription by ID or to retrieve a list
+            of the user's prescriptions. The router should avoid confusing
+            this with questions about whether a medication *requires* a
+            prescription (which belongs under med_info).
+        - small_talk:
+            Greetings, thanks, "what can you do", casual chit-chat, and any
+            message that is out of scope for the supported pharmacy intents
+            (including unsafe requests, sales, encouragements, or unrelated
+            topics).
+
+    Implementation Details:
+        - Calls `client.responses.create(...)` with model="gpt-5" and minimal
+          reasoning effort.
+        - The model is instructed to output ONLY valid JSON matching the
+          documented schema.
+        - The function extracts the first JSON object from the raw model
+          output using `_extract_json_object`.
+        - The JSON is parsed via `json.loads` and validated using
+          `IntentResult.model_validate`.
+
+    Error Handling:
+        This function may raise exceptions in the following cases:
+        - If the model output does not contain a valid JSON object
+          (`_extract_json_object` fails or returns malformed JSON).
+        - If `json.loads` fails due to invalid JSON.
+        - If Pydantic validation fails because the JSON does not conform to
+          `IntentResult` (e.g., missing fields, invalid intent value, wrong
+          types).
+        Calling code should catch these errors and apply a safe fallback
+        (e.g., default to "small_talk" or a constrained "other" behavior,
+        depending on your application design).
+
+    Fallback Behavior:
+        - No straight fallback behavior implemented in current scope -  confidence could be used to prevent 
+        wrong detection in the future.
+    """
     resp = client.responses.create(
         model="gpt-5",
         reasoning={"effort": "minimal"},
@@ -32,9 +114,9 @@ def detect_intent_llm(text: str) -> IntentResult:
             "Your goal is to return a JSON which classifies user's intent."
             "Return ONLY a valid JSON and nothing else.\n\n"
             "Allowed intents:\n"
-            "- med_info: the user asks about a medication name or information AVOID confusing when he asks for a medical advice or guidance unrelated to specific medicines.\n"
+            "- med_info: the user asks about a medication name or information such as dosage, usage instructions, prescription requirements and active ingredients. AVOID confusing when user asks for a medical advice or guidance unrelated to specific medicines.\n"
             "- stock_check: the user asks if a medication is available or in stock in a branch/city/store.\n"
-            "- rx_verify: the user asks to verify his prescription or get a list of his prescriptions\n"
+            "- rx_verify: the user asks to verify his prescription or get a list of his prescriptions. Avoid confusing when user asks to confirm medication prescription requirements for a medicine.\n"
             "- small_talk: greetings, thanks, 'what can you do', casual chit-chat, any message that is not related to specific medicines, including sales, encouragments or a behavior that is unsafe for the customer or that out of the scope of a Pharmacist Assistant chatbot or that is not covered by the aforementioned intents.\n"
             "Language:\n"
             "- lang must be 'he' if the user wrote in Hebrew letters, else 'en'.\n\n"
