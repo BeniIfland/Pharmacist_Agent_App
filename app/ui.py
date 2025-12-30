@@ -55,7 +55,7 @@ def respond(message, history, flow_state,trace_state):
     """
     # Per-turn trace: clear at start of turn
     
-    trace_table_rows = []
+    
     trace_md = "_Waiting for input…_"
     # Convert Gradio history list of dicts to ChatMessage list
     msg_history = []
@@ -80,9 +80,7 @@ def respond(message, history, flow_state,trace_state):
 
         # Build trace table rows from partial.tool_calls
         trace_md = trace_markdown(partial.tool_calls)
-        # #update trace from partial.tool_calls (current turn only)
-        # trace_state = trace_table_rows
-
+        
         # Yield chat, textbox, flow_state, trace markdown
         yield ui_history, "", last_flow, trace_md
         

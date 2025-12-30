@@ -1,18 +1,18 @@
 # Pharmacist Assistant Agent Demo Journeys
 ---
-The following user hourneys depict the implemnted multi-step flows with different variations such as: missing required information, language change, medical-advice, re-routing etc.
+The following user journeys depict the implemnted multi-step flows with different variations such as: missing required information, language change, medical-advice, re-routing, etc.
 ## Journey 1: Medication info (Happy and sucessfull path)
 **Input (English):**  
 Tell me about Advil please
 
 **Expected:**  
-- Answers with factual info in English for Ibuprofen (active ingredient, rx_required, summary)
+- Answers with factual info in English for Ibuprofen (active ingredient, rx_required, summary) and mentions tha Advil is an alias of Ibuprofen
 - No medical advice / dosage
 - Tracing panel should include: detect_intent → extract_med_name → get_medication_by_name 
 
 ---
 
-## Journey 2: Medication info (Medication not mentioned and recovery)
+## Journey 2: Medication info (medication not mentioned and recovery)
 **Input (English):**  
 Tell me about Xyzzq
 
@@ -42,15 +42,15 @@ Tell me about Xyzzq
 אספירין (not in the DB)
 
 **Expected:**  
-- Now responds in Hebrew that the user might have not mentioned a medicine or it was misspelled or doesn't exist in the system asnd asks the user to privide a different name or spelling
+- Now responds in Hebrew that the user might have not mentioned a medicine or it was misspelled or doesn't exist in the system and asks the user to privide a different name or spelling
 - Tracing panel should include: extract_med_name  → get_medication_by_name 
 
 
 **Follow-up (Hebrew):**  
-אם כך מידע על לוסק בבקשה (long answer so suspected not to be only a medicine name but a different reuest - reroute)
+אם כך מידע על לוסק בבקשה (long answer so suspected not to be only a medicine name but a different request - reroute)
 
 **Expected:**  
-- Answers with factual info in Hbrew for Ibuprofen (active ingredient, rx_required, summary)
+- Answers with factual info in Hebrew for Ibuprofen (active ingredient, rx_required, summary)
 - Tracing panel should include: detect_intent → extract_med_name  → get_medication_by_name
 ---
 
@@ -59,7 +59,7 @@ Tell me about Xyzzq
 Do you have Nurofen in stock in Tel Aviv?
 
 **Expected:**  
-- Responds with stock status in English for Ibuprofen in Tel Aviv (IN_STOCK/LOW/OUT/UNKNOWN)
+- Responds with stock status in English for Ibuprofen in Tel Aviv (IN_STOCK/LOW/OUT/UNKNOWN) and mentiones that Nurofen is an alias of Ibuprofen
 - Mentions availability may change
 - Tracing panel: detect_intent → extract_med_name → extract_branch_name → get_medication_by_name → get_branch_by_name → get_stock 
 
@@ -95,7 +95,7 @@ Jerusalem
 לא משנה
 
 **Expected:**  
-- Flow escapes and re-routes to small_talk in Hebrew (not trapped in stock_check)
+- Flow escapes and re-routes to small_talk in Hebrew because the user want to abort (not trapped in stock_check)
 - Tracing panel: detect_intent → render_small_talk
 
 ---
