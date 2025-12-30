@@ -47,7 +47,7 @@ Tell me about Xyzzq
 
 
 **Follow-up (Hebrew):**  
-אם כך מידע על לוסק בבקשה (long answer so suspected not to be a medicine name - reroute)
+אם כך מידע על לוסק בבקשה (long answer so suspected not to be only a medicine name but a different reuest - reroute)
 
 **Expected:**  
 - Answers with factual info in Hbrew for Ibuprofen (active ingredient, rx_required, summary)
@@ -144,7 +144,7 @@ I would love to get info regarding my prescription
 - Asks for user ID or prescription ID
 - Tracing panel: detect_intent → extract_rx_id  → extract_user_id  
 
-**Follow-up** 
+**Follow-up:** 
 user_001
 
 **Expected:**  

@@ -21,7 +21,7 @@ def is_medical_advice_request(text: str) -> bool:
 
 #the following parts are in charge of detecting when the user wants to cancel or escape the current flow
 _CANCEL_PAT = re.compile(
-    r"\b(cancel|stop|exit|quit|never mind|forget it|back)\b|"
+    r"\b(cancel|stop|exit|quit|never mind|nevermind|forget it|back)\b|"
     r"(ביטול|לא משנה|עזוב|צא|דיי|חזור)",
     re.IGNORECASE,)
 

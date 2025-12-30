@@ -1,8 +1,7 @@
 import gradio as gr
-from app.llm import stream_llm
 from app.schemas import ChatRequest, ChatMessage, FlowState
 from app.orchestrator import handle_turn
-import time
+
 
 TRACE_LABELS = {
     "safety_gate": "Safety gate activated (medical advice refusal)",
@@ -17,7 +16,7 @@ TRACE_LABELS = {
     "get_prescriptions_for_user": "DB lookup: user prescriptions",
     "render_med_info": "Render medication info answer",
     "render_stock_check": "Render inventory info answer",
-    "render_small_talk": "Render small talk",
+    "render_small_talk": "Replies to topics unrelated to the agent's duty",
     "render_refusal": "Render medical advice refusal",
     "extract_rx_id": "Trying to exract prescription",
     "extract_user_id" : "Trying to exract user ID",
@@ -88,7 +87,6 @@ def respond(message, history, flow_state,trace_state):
         yield ui_history, "", last_flow, trace_md
         
 
-#TODO: Add stop button / cancel  & Add safety gating mid-stream
 
 def build_ui():
     with gr.Blocks(title="Agent Chat") as demo: #creates a gradio UI page
@@ -100,12 +98,10 @@ def build_ui():
         with gr.Row(): 
              #chat interface
             with gr.Column(scale=3):
-                gr.Markdown("### I can help with factual information about medications we have in our system, inventory or user prescriptions, ready when you are...")
-                chatbot = gr.Chatbot(height=350) ##chat component
+                gr.Markdown("### I can help with factual information about medications we have in our system, inventory or your prescriptions, ready when you are...")
+                chatbot = gr.Chatbot(height=700) ##chat component
                 msg = gr.Textbox(placeholder="Type a message...", label="Message")
                 send = gr.Button("Send")
-                # send.click(respond, inputs=[msg, chatbot, flow_state], outputs=[chatbot, msg, flow_state])
-                # msg.submit(respond, inputs=[msg, chatbot, flow_state], outputs=[chatbot, msg, flow_state])
             #trace tools and state interface
             with gr.Column(scale=2):
                 gr.Markdown("## Agent Tracing:")
@@ -125,7 +121,7 @@ def trace_markdown(tool_calls) -> str:
         return "_Waiting for input…_"
 
     seen = set()
-    lines = ["**Execution timeline**\n"]
+    lines = ["**Execution timeline:**\n"]
     for tc in tool_calls:
         name = getattr(tc, "name", None) or (tc.get("name") if isinstance(tc, dict) else str(tc))
         if not name or name in seen:
@@ -134,9 +130,9 @@ def trace_markdown(tool_calls) -> str:
         desc = TRACE_LABELS.get(name, "")
         # show name + description (name helps debugging, description helps reviewer)
         if desc:
-            lines.append(f"✓ **{name}** — {desc}")
+            lines.append(f"✓ **{name}** — {desc}\n")
         else:
-            lines.append(f"✓ **{name}**")
+            lines.append(f"✓ **{name}**\n")
 
     return "\n".join(lines) if lines else "_Waiting for input…_"
 
