@@ -2,7 +2,7 @@
 
 ## Evaluation Purpose
 
-The goal of this evaluation is to verify that the gentic assitant app bahaves in a correct, safe and predictable manner.
+The goal of this evaluation is to verify that the agentic assitant app bahaves in a correct, safe and predictable manner.
 The evaluation was focused on: 
 - Correct execution of multi-step conversational flows with predictable tool calls
 - Proper enforcement of safety constraints (no medical advice)
@@ -101,15 +101,15 @@ The tracing panel was used to confirm correct sequencing of LLM calls and tool i
 The following screenshots provide evidence of the evaluation:
 
 - **Screenshot 1:** 
-  ([Medication information flow with small talk start](evidence_screenshots\med_not_found_and_change.png))
+  ([Medication information flow with small talk start](evidence_screenshots/med_not_found_and_change.png))
   Demonstrates correct intent detection, small talk reply, re-routing, clarification question, entity extraction, tool grounding, and response rendering.
 
 - **Screenshot 2:**  
-  ([Stock availability flow with missing slot and meical advice request](evidence_screenshots\stock_availiability_and_advice_refusal.png))
+  ([Stock availability flow with missing slot and meical advice request](evidence_screenshots/stock_availiability_and_advice_refusal.png))
   Demonstrates multi-step slot collection, flow continuation and flow safety cacelation.
 
 - **Screenshot 3:** 
-  ([Prescription information flow with language change small talk](evidence_screenshots\rx_small_talk_lang_change.png))
+  ([Prescription information flow with language change small talk](evidence_screenshots/rx_small_talk_lang_change.png))
   Demonstrates correct intent detection, multi-step flow collection, response rendering and adaptive language change.
 
 

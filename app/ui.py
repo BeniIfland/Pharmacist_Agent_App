@@ -99,7 +99,7 @@ def build_ui():
              #chat interface
             with gr.Column(scale=3):
                 gr.Markdown("### I can help with factual information about medications we have in our system, inventory or your prescriptions, ready when you are...")
-                chatbot = gr.Chatbot(height=700) ##chat component
+                chatbot = gr.Chatbot(height=350) ##chat component
                 msg = gr.Textbox(placeholder="Type a message...", label="Message")
                 send = gr.Button("Send")
             #trace tools and state interface
